@@ -2,8 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useSelector } from "react-redux";
+import { Link, useNavigate } from "react-router";
 import { useChat } from "../hooks/useChat";
 import { useAuth } from "../../auth/hook/useAuth";
+import { getUsageStats, getModelsRegistry, createCheckoutSession } from "../../subscription/service/subscription.api";
+import { FRONTEND_PRICING_CONFIG } from "../../../config/pricing.config";
 
 // Custom CodeBlock Component with Language badge and Copy button
 const CodeBlock = ({ language, value }) => {
@@ -133,17 +136,21 @@ const suggestions = [
   }
 ];
 
-const AVAILABLE_MODELS = [
-  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "Google", desc: "Fast & lightweight coding assistance", color: "text-blue-400" },
-  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "Google", desc: "Balanced model for complex logic", color: "text-indigo-400" },
-  { id: "mistral-small-latest", name: "Mistral Small", provider: "Mistral", desc: "Efficient reasoning & explanations", color: "text-teal-400" },
-  { id: "mistral-large-latest", name: "Mistral Large", provider: "Mistral", desc: "Full-capability advanced reasoning", color: "text-purple-400" },
-  { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "OpenAI", desc: "Highly accurate and speedy", color: "text-green-400" },
+const DEFAULT_MODELS = [
+  { id: "auto", displayName: "Aether Auto", provider: "Aether Engine", desc: "Smart router selecting the optimal AI model for your prompt", color: "text-emerald-400", plan: "free", badge: "Recommended" },
+  { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", provider: "Google", desc: "Fast & lightweight assistance (Limited Availability)", color: "text-blue-400", plan: "free" },
+  { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "Google", desc: "Balanced model for complex logic (Limited Availability)", color: "text-indigo-400", plan: "free" },
+  { id: "llama-3.3-70b-versatile", displayName: "Llama 3.3 70B (Groq)", provider: "Groq", desc: "Powerful open reasoning", color: "text-amber-400", plan: "free" },
+  { id: "gemma2-9b-it", displayName: "Gemma 2 9B (Groq)", provider: "Groq", desc: "Fast & conversational", color: "text-orange-400", plan: "free" },
+  { id: "gpt-4o-mini", displayName: "GPT-4o Mini", provider: "OpenAI", desc: "Highly accurate and speedy", color: "text-green-400", plan: "pro" },
+  { id: "mistral-small-latest", displayName: "Mistral Small", provider: "Mistral", desc: "Efficient reasoning & explanations", color: "text-teal-400", plan: "pro" },
+  { id: "mistral-large-latest", displayName: "Mistral Large", provider: "Mistral", desc: "Full-capability advanced reasoning", color: "text-purple-400", plan: "pro" }
 ];
 
 const Dashboard = () => {
   const chat = useChat();
   const auth = useAuth();
+  const navigate = useNavigate();
 
   const chats = useSelector((state) => state.chat.chats);
   const currentChatId = useSelector((state) => state.chat.currentChatId);
@@ -153,9 +160,16 @@ const Dashboard = () => {
   const [inputValue, setInputValue] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => {
-    return localStorage.getItem("selectedModel") || "gemini-2.5-flash-lite";
+    return localStorage.getItem("selectedModel") || "auto";
   });
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [modelsConfig, setModelsConfig] = useState(null);
+  const [usageStats, setUsageStats] = useState(null);
+  const [proPreviewRemaining, setProPreviewRemaining] = useState(5);
+  const [fallbackNotice, setFallbackNotice] = useState(null);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState("");
 
   const messagesEndRef = useRef(null);
 
@@ -167,13 +181,52 @@ const Dashboard = () => {
   useEffect(() => {
     chat.initailzeSocketConnection();
     chat.handleGetChats();
+    fetchConfig();
+    fetchUsage();
   }, []);
+
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      fetchUsage();
+    }
+  }, [isLoading]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
   }, [messages, isLoading]);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await getModelsRegistry();
+      setModelsConfig(res.models);
+    } catch (err) {
+      console.error("Failed to load models configuration", err);
+    }
+  };
+
+  const fetchUsage = async () => {
+    try {
+      const res = await getUsageStats();
+      setUsageStats(res.usage);
+      if (res.proPreviewRemaining !== undefined) {
+        setProPreviewRemaining(res.proPreviewRemaining);
+      }
+    } catch (err) {
+      console.error("Failed to load usage statistics", err);
+    }
+  };
+
+  const handleUpgrade = () => {
+    navigate("/pricing");
+  };
+
+  const handleLogoutClick = async () => {
+    if (confirm("Are you sure you want to log out of Aether AI?")) {
+      await auth.handleLogout();
+    }
+  };
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -186,11 +239,26 @@ const Dashboard = () => {
 
     const currentInput = inputValue;
     setInputValue("");
-    await chat.handleSendMessage({
-      message: currentInput,
-      chatId,
-      model: selectedModel,
-    });
+    setFallbackNotice(null);
+    
+    try {
+      const res = await chat.handleSendMessage({
+        message: currentInput,
+        chatId,
+        model: selectedModel,
+      });
+
+      if (res && res.fallbackUsed) {
+        setFallbackNotice(`${res.requestedModel} was temporarily unavailable. Aether used ${res.actualModel} instead.`);
+      }
+    } catch (error) {
+      console.error("Send message error:", error);
+      const apiErr = error.response?.data;
+      if (apiErr && (apiErr.error === "UPGRADE_REQUIRED" || apiErr.error === "LIMIT_EXCEEDED")) {
+        setUpgradeError(apiErr.message);
+        setIsUpgradeModalOpen(true);
+      }
+    }
   };
 
   const handleSuggestionClick = async (promptText) => {
@@ -198,17 +266,46 @@ const Dashboard = () => {
     if (!chatId) {
       chatId = await chat.handleCreateNewChat();
     }
-    await chat.handleSendMessage({
-      message: promptText,
-      chatId,
-      model: selectedModel,
-    });
+
+    setFallbackNotice(null);
+
+    try {
+      const res = await chat.handleSendMessage({
+        message: promptText,
+        chatId,
+        model: selectedModel,
+      });
+
+      if (res && res.fallbackUsed) {
+        setFallbackNotice(`${res.requestedModel} was temporarily unavailable. Aether used ${res.actualModel} instead.`);
+      }
+    } catch (error) {
+      console.error("Suggestion click error:", error);
+      const apiErr = error.response?.data;
+      if (apiErr && (apiErr.error === "UPGRADE_REQUIRED" || apiErr.error === "LIMIT_EXCEEDED")) {
+        setUpgradeError(apiErr.message);
+        setIsUpgradeModalOpen(true);
+      }
+    }
   };
 
   const handleModelChange = (modelId) => {
+    const registry = modelsConfig || DEFAULT_MODELS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
+    const targetModel = registry[modelId];
+
+    if (targetModel && targetModel.plan === "pro" && user?.plan !== "pro" && proPreviewRemaining <= 0) {
+      setIsUpgradeModalOpen(true);
+      setIsModelDropdownOpen(false);
+      return;
+    }
+
     setSelectedModel(modelId);
     localStorage.setItem("selectedModel", modelId);
     setIsModelDropdownOpen(false);
+  };
+
+  const handleUpgradeTrigger = () => {
+    setIsUpgradeModalOpen(true);
   };
 
   const openChat = (chatId) => {
@@ -228,16 +325,17 @@ const Dashboard = () => {
     setIsSidebarOpen(false);
   };
 
-  const handleLogoutClick = async () => {
-    if (confirm("Are you sure you want to log out?")) {
-      await auth.handleLogout();
-    }
-  };
-
-  // Sort chats by lastUpdated descending to display recent chats first
   const sortedChats = Object.values(chats).sort((a, b) => {
     return new Date(b.lastUpdated) - new Date(a.lastUpdated);
   });
+
+  const registry = modelsConfig || DEFAULT_MODELS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
+  const activeModelMeta = registry[selectedModel] || DEFAULT_MODELS[0];
+  const listModels = Object.values(registry);
+
+  const autoModel = listModels.find(m => m.id === "auto") || DEFAULT_MODELS[0];
+  const freeModels = listModels.filter(m => m.plan === "free" && m.id !== "auto");
+  const proModels = listModels.filter(m => m.plan === "pro");
 
   return (
     <div className="h-screen w-screen flex bg-neutral-900 text-neutral-100 font-sans overflow-hidden">
@@ -287,54 +385,33 @@ const Dashboard = () => {
               Aether
             </h1>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleLogoutClick}
-              className="text-neutral-450 hover:text-red-400 hover:bg-neutral-900/60 p-1.5 rounded-lg transition-all duration-200 cursor-pointer"
-              title="Log out"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              className="md:hidden text-neutral-400 hover:text-white p-1 rounded-md focus:outline-none cursor-pointer"
-            >
-              <svg className="w-5.5 h-5.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-3">
           <button
             onClick={startNewChat}
-            className="w-full flex items-center justify-center gap-2 border border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800/80 text-neutral-200 hover:text-white rounded-xl py-3 px-4 font-medium transition-all duration-200 cursor-pointer shadow-sm group text-sm"
+            className="p-1.5 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 rounded-lg text-neutral-300 hover:text-white transition-all cursor-pointer shadow-sm"
+            title="Start New Chat"
           >
-            <svg className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            New chat
           </button>
         </div>
 
-        {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 scrollbar-thin">
+        {/* Chat List */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin">
           {sortedChats.length === 0 ? (
-            <div className="text-xs text-neutral-600 text-center py-6">
-              No conversations yet.
+            <div className="text-center py-10 px-4 text-neutral-600 text-xs select-none">
+              No conversations yet. Start a new chat above!
             </div>
           ) : (
             sortedChats.map((chatItem) => (
               <div
                 key={chatItem.id}
                 onClick={() => openChat(chatItem.id)}
-                className={`group flex items-center justify-between rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-200 text-sm select-none border border-transparent
-                  ${currentChatId === chatItem.id
+                className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs transition-all duration-150 border ${
+                  currentChatId === chatItem.id
                     ? "bg-neutral-800/75 text-white font-medium border-neutral-700/40"
-                    : "text-neutral-400 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
+                    : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200 border-transparent"
+                }`}
               >
                 <div className="flex items-center gap-2.5 overflow-hidden flex-1">
                   <svg className={`w-4 h-4 flex-shrink-0 ${currentChatId === chatItem.id ? "text-blue-500" : "text-neutral-500 group-hover:text-neutral-400"}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -357,20 +434,99 @@ const Dashboard = () => {
           )}
         </div>
 
+        {/* Pro Preview Banner Pill for Free users */}
+        {user?.plan !== "pro" && (
+          <div className="mx-3 my-2 p-3 bg-gradient-to-r from-blue-950/40 via-indigo-950/40 to-neutral-900 rounded-xl border border-blue-500/30 text-xs shadow-inner">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1">
+                ⚡ Pro Preview
+              </span>
+              <span className="text-[10px] font-bold text-neutral-300">
+                {proPreviewRemaining} messages left
+              </span>
+            </div>
+            <p className="text-[10px] text-neutral-400 leading-tight mt-0.5">
+              Try premium models & tools for 5 total messages before upgrading.
+            </p>
+          </div>
+        )}
+
+        {/* Free Limits Indicator in Sidebar */}
+        {user?.plan !== "pro" && usageStats && registry[selectedModel] && registry[selectedModel].plan === "free" && selectedModel !== "auto" && (
+          <div className="mx-3 my-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800/80 text-xs shadow-inner">
+            <div className="flex justify-between items-center mb-1 text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
+              <span>Daily Limits</span>
+              <button onClick={handleUpgradeTrigger} className="text-blue-400 hover:text-blue-300 font-extrabold focus:outline-none transition-colors">
+                Upgrade
+              </button>
+            </div>
+            {(() => {
+              const conf = registry[selectedModel];
+              const modelUsage = usageStats[selectedModel] || { requests: 0 };
+              const remaining = Math.max(0, conf.dailyRequestLimit - modelUsage.requests);
+              const percent = Math.min(100, Math.ceil((remaining / conf.dailyRequestLimit) * 100));
+              return (
+                <div className="text-neutral-400 mt-1">
+                  <div className="flex justify-between text-[11px] mb-1.5">
+                    <span className="truncate max-w-[120px]">{conf.displayName}</span>
+                    <span className="font-semibold text-neutral-200">{remaining} remaining</span>
+                  </div>
+                  <div className="w-full bg-neutral-950 rounded-full h-1 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${percent < 20 ? "bg-red-500" : percent < 55 ? "bg-amber-500" : "bg-blue-500"}`}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* User profile section */}
-        <div className="p-4 border-t border-neutral-800/60 bg-neutral-950/80 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-full bg-blue-700/80 flex items-center justify-center text-white font-semibold text-sm shadow-sm select-none">
-              {user?.name ? user.name[0].toUpperCase() : (user?.email ? user.email[0].toUpperCase() : "U")}
+        <div className="p-4 border-t border-neutral-800/60 bg-neutral-950/80 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-9 h-9 rounded-full bg-blue-750/80 flex items-center justify-center text-white font-semibold text-sm shadow-sm select-none">
+              {user?.username ? user.username[0].toUpperCase() : (user?.email ? user.email[0].toUpperCase() : "U")}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-neutral-300 truncate leading-snug">
-                {user?.name || "Authenticated User"}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-neutral-300 truncate leading-tight">
+                  {user?.username || "Aether User"}
+                </p>
+                {user?.plan === "pro" && (
+                  <span className="text-[8px] font-black tracking-widest bg-blue-600/10 text-blue-400 px-1.5 py-0.25 rounded border border-blue-900/50 uppercase shadow-sm">
+                    Pro
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-neutral-500 truncate leading-snug">
                 {user?.email || "coding-assistant@aether.ai"}
               </p>
             </div>
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <Link
+              to="/settings"
+              className="text-neutral-500 hover:text-white hover:bg-neutral-900/60 p-1.5 rounded-lg transition-all duration-150 cursor-pointer"
+              title="Billing & Settings"
+            >
+              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </Link>
+            
+            <button
+              onClick={handleLogoutClick}
+              className="text-neutral-500 hover:text-red-400 hover:bg-neutral-900/60 p-1.5 rounded-lg transition-all duration-150 cursor-pointer"
+              title="Log Out"
+            >
+              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l3 3m0 0l-3 3m3-3H8.25" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -382,6 +538,19 @@ const Dashboard = () => {
         {/* Messages list container */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 scrollbar-thin">
           
+          {/* Fallback Notice Banner */}
+          {fallbackNotice && (
+            <div className="max-w-3xl mx-auto mb-4 p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{fallbackNotice}</span>
+              </div>
+              <button onClick={() => setFallbackNotice(null)} className="text-amber-400 hover:text-white p-1">✕</button>
+            </div>
+          )}
+
           {messages.length === 0 ? (
             // Clean empty state with logo & cards
             <div className="h-full flex flex-col justify-center items-center max-w-3xl mx-auto w-full text-center py-10">
@@ -432,7 +601,6 @@ const Dashboard = () => {
                     ) : (
                       /* AI Response layout */
                       <div className="w-full flex items-start gap-4">
-                        {/* Aether Avatar on the left */}
                         <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 font-bold text-xs select-none shadow-md text-white mt-1">
                           AE
                         </div>
@@ -510,10 +678,15 @@ const Dashboard = () => {
                 <button
                   type="button"
                   onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-xs rounded-xl font-medium transition-all duration-200 cursor-pointer shadow-sm text-neutral-300 focus:outline-none"
+                  className="flex items-center gap-2 px-3.5 py-1.5 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-xs rounded-xl font-medium transition-all duration-200 cursor-pointer shadow-sm text-neutral-300 focus:outline-none"
                 >
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                  <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-semibold">{activeModelMeta?.displayName}</span>
+                  {activeModelMeta?.id === "auto" && (
+                    <span className="text-[8px] bg-emerald-500/20 text-emerald-300 font-extrabold px-1.5 py-0.5 rounded uppercase border border-emerald-500/40">
+                      Recommended
+                    </span>
+                  )}
                   <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isModelDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
                   </svg>
@@ -525,46 +698,111 @@ const Dashboard = () => {
                       className="fixed inset-0 z-40 cursor-default" 
                       onClick={() => setIsModelDropdownOpen(false)}
                     />
-                    <div className="absolute bottom-full left-0 mb-2 w-72 bg-neutral-950/95 backdrop-blur-xl border border-neutral-800 rounded-2xl shadow-2xl p-2 z-50 animate-fade-in divide-y divide-neutral-800/40">
-                      <div className="px-3 py-2 text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                        Select Model
-                      </div>
-                      <div className="py-1.5 space-y-0.5 max-h-64 overflow-y-auto">
-                        {AVAILABLE_MODELS.map((model) => (
+                    <div className="absolute bottom-full left-0 mb-2 w-84 bg-neutral-950/95 backdrop-blur-xl border border-neutral-800 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in max-h-[380px] overflow-y-auto divide-y divide-neutral-800/40">
+                      
+                      {/* Aether Auto Recommended Section */}
+                      {autoModel && (
+                        <div className="pb-2">
+                          <div className="px-2 py-1 text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center justify-between">
+                            <span>Smart Auto Routing</span>
+                            <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase">Recommended</span>
+                          </div>
                           <button
-                            key={model.id}
                             type="button"
-                            onClick={() => handleModelChange(model.id)}
-                            className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 cursor-pointer
-                              ${selectedModel === model.id 
-                                ? "bg-blue-600/10 text-white border-l-2 border-blue-500" 
-                                : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
+                            onClick={() => handleModelChange("auto")}
+                            className={`w-full text-left flex items-start gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-150 cursor-pointer mt-1
+                              ${selectedModel === "auto" 
+                                ? "bg-emerald-600/15 text-white border-l-2 border-emerald-500" 
+                                : "bg-neutral-900/50 hover:bg-neutral-850 text-neutral-300"}`}
                           >
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 font-sans">
-                                <span className={`text-xs font-semibold ${selectedModel === model.id ? "text-blue-400" : "text-neutral-200"}`}>
-                                  {model.name}
-                                </span>
-                                <span className={`text-[8.5px] px-1.5 py-0.25 rounded-md font-extrabold uppercase border
-                                  ${model.provider === "Google" ? "border-blue-800/45 bg-blue-900/10 text-blue-400" : 
-                                    model.provider === "Mistral" ? "border-teal-800/45 bg-teal-900/10 text-teal-400" :
-                                    "border-green-800/45 bg-green-900/10 text-green-400"}`}
-                                >
-                                  {model.provider}
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-emerald-300">Aether Auto</span>
+                                <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase bg-neutral-800 text-neutral-400">
+                                  AI Router
                                 </span>
                               </div>
-                              <p className="text-[10.5px] text-neutral-500 leading-normal mt-0.5 font-normal truncate">
-                                {model.desc}
-                              </p>
+                              <p className="text-[10px] text-neutral-400 mt-0.5 leading-snug">{autoModel.desc}</p>
                             </div>
-                            {selectedModel === model.id && (
-                              <svg className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            )}
                           </button>
-                        ))}
+                        </div>
+                      )}
+
+                      <div className="py-2">
+                        <div className="px-2 py-1 text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                          Free Models
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {freeModels.map((model) => (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onClick={() => handleModelChange(model.id)}
+                              className={`w-full text-left flex items-start gap-2 px-2 py-1.5 rounded-xl transition-all duration-150 cursor-pointer
+                                ${selectedModel === model.id 
+                                  ? "bg-blue-600/10 text-white border-l-2 border-blue-500" 
+                                  : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-xs font-semibold ${selectedModel === model.id ? "text-blue-400" : "text-neutral-200"}`}>
+                                    {model.displayName}
+                                  </span>
+                                  <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase border border-neutral-800/80 text-neutral-550">
+                                    {model.provider}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-neutral-500 mt-0.5 truncate">{model.desc}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
+                      <div className="pt-2">
+                        <div className="px-2 py-1 text-[9px] font-bold text-blue-400 uppercase tracking-widest flex items-center justify-between">
+                          <span className="flex items-center gap-1">Pro Models</span>
+                          {user?.plan !== "pro" && proPreviewRemaining > 0 && (
+                            <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold">
+                              ⚡ Preview ({proPreviewRemaining} left)
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {proModels.map((model) => {
+                            const hasProAccess = user?.plan === "pro" || proPreviewRemaining > 0;
+                            return (
+                              <button
+                                key={model.id}
+                                type="button"
+                                onClick={() => handleModelChange(model.id)}
+                                className={`w-full text-left flex items-start justify-between gap-2 px-2 py-1.5 rounded-xl transition-all duration-150 cursor-pointer
+                                  ${selectedModel === model.id 
+                                    ? "bg-blue-600/10 text-white border-l-2 border-blue-500" 
+                                    : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-xs font-semibold ${selectedModel === model.id ? "text-blue-400" : "text-neutral-200"}`}>
+                                      {model.displayName}
+                                    </span>
+                                    <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase border border-neutral-800/80 text-neutral-550">
+                                      {model.provider}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-neutral-500 mt-0.5 truncate">{model.desc}</p>
+                                </div>
+                                {!hasProAccess && (
+                                  <svg className="w-3.5 h-3.5 text-neutral-600 self-center" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                  </svg>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                     </div>
                   </>
                 )}
@@ -598,6 +836,78 @@ const Dashboard = () => {
         </div>
 
       </main>
+
+      {/* Upgrade to Pro Modal */}
+      {isUpgradeModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-md">
+          <div className="relative max-w-md w-full rounded-3xl border border-blue-500/30 bg-neutral-950 p-6 md:p-8 shadow-2xl flex flex-col gap-5 text-left">
+            <button
+              onClick={() => setIsUpgradeModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-900 transition-colors focus:outline-none cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {upgradeError && (
+              <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2.5">
+                <svg className="w-4 h-4 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>{upgradeError}</span>
+              </div>
+            )}
+
+            <div className="text-center">
+              <div className="mx-auto w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white text-lg font-black mb-3 shadow-lg shadow-blue-900/35">
+                AE
+              </div>
+              <h2 className="text-xl md:text-2xl font-extrabold text-white">Unlock Aether Pro</h2>
+              <p className="text-xs text-neutral-400 mt-1">Get advanced programming assistance immediately</p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 text-center">
+              <span className="text-2xl font-black text-white">{FRONTEND_PRICING_CONFIG.introductoryPrice}</span>
+              <span className="text-xs text-neutral-400 font-semibold"> for your {FRONTEND_PRICING_CONFIG.introductoryPeriodText}</span>
+              <p className="text-[10px] text-neutral-500 font-medium mt-1">{FRONTEND_PRICING_CONFIG.offerHeadline}</p>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Main Benefits Included:</h3>
+              <ul className="space-y-2.5">
+                {FRONTEND_PRICING_CONFIG.features.map((feat, idx) => (
+                  <li key={idx} className="flex items-start gap-2.5 text-xs text-neutral-300">
+                    <svg className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    <span>{feat}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <button
+              onClick={handleUpgrade}
+              disabled={upgradeLoading}
+              className="w-full mt-2 text-center py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-xs font-extrabold tracking-wide shadow-md transition-all transform active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {upgradeLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Connecting...</span>
+                </>
+              ) : (
+                <span>Upgrade to Pro Now</span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

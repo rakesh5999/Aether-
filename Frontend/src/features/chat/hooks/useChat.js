@@ -38,8 +38,9 @@ export const useChat = () => {
           title
         }));
       }
-    } catch (error) {
+        } catch (error) {
       dispatch(setError(error.message));
+      throw error;
     } finally {
       dispatch(setLoading(false));
     }

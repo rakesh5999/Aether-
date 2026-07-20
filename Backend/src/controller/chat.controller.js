@@ -1,137 +1,175 @@
 import { generateResponse, generateTitle } from "../services/ai.service.js";
-import chatModel from "../models/chat.model.js"
-import messageModel from "../models/message.model.js"
-import { AIMessage } from "langchain";
+import chatModel from "../models/chat.model.js";
+import messageModel from "../models/message.model.js";
+import { modelsConfig } from "../config/models.config.js";
+import { verifyUsageAndLimits, recordUsage, getConsolidatedDailyUsage, decrementProPreview } from "../services/usage.service.js";
+import { requestContext } from "../utils/context.js";
+
+export async function getModelsRegistry(req, res) {
+  try {
+    res.status(200).json({
+      success: true,
+      models: modelsConfig
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch model registry", error: err.message });
+  }
+}
+
+export async function getUsageStats(req, res) {
+  try {
+    const data = await getConsolidatedDailyUsage(req.user.id);
+    res.status(200).json({
+      success: true,
+      usage: data.models,
+      proPreviewRemaining: data.proPreviewRemaining,
+      userPlan: data.userPlan
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch usage stats", error: err.message });
+  }
+}
 
 export async function createChat(req, res) {
   try {
     const chat = await chatModel.create({
       user: req.user.id,
       title: "New Chat"
-    })
+    });
     res.status(201).json({
       message: "Chat created successfully",
       chat
-    })
+    });
   } catch (err) {
-    console.error("createChat error:", err)
-    res.status(500).json({ message: "Failed to create chat", error: err.message })
+    console.error("createChat error:", err);
+    res.status(500).json({ message: "Failed to create chat", error: err.message });
   }
 }
 
 export async function sendMessage(req, res) {
-  const { message, chat: chatId, model } = req.body
+  const { message, chat: chatId, model } = req.body;
+  const userId = req.user.id;
+  const targetModel = model || "auto";
 
   try {
-    let title = null, chat = null
-    let activeChatId = chatId
+    // 1. Verify model access permissions and daily usage limits
+    const limitCheck = await verifyUsageAndLimits(userId, targetModel);
+    if (!limitCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: limitCheck.error,
+        message: limitCheck.message
+      });
+    }
+
+    const { userPlan, proPreviewRemaining } = limitCheck;
+    const modelConfig = modelsConfig[targetModel] || modelsConfig["auto"];
+    const allowedTools = modelConfig.allowedTools || ["all"];
+
+    let title = null, chat = null;
+    let activeChatId = chatId;
 
     if (!activeChatId) {
-      title = await generateTitle(message)
+      title = await generateTitle(message);
       chat = await chatModel.create({
-        user: req.user.id,
+        user: userId,
         title
-      })
-      activeChatId = chat._id
+      });
+      activeChatId = chat._id;
     } else {
-      // Touch the chat to update its updatedAt timestamp
-      const messagesCount = await messageModel.countDocuments({ chat: activeChatId })
+      const messagesCount = await messageModel.countDocuments({ chat: activeChatId });
       if (messagesCount === 0) {
-        title = await generateTitle(message)
-        chat = await chatModel.findByIdAndUpdate(activeChatId, { title, updatedAt: new Date() }, { new: true })
+        title = await generateTitle(message);
+        chat = await chatModel.findByIdAndUpdate(activeChatId, { title, updatedAt: new Date() }, { new: true });
       } else {
-        chat = await chatModel.findByIdAndUpdate(activeChatId, { updatedAt: new Date() }, { new: true })
+        chat = await chatModel.findByIdAndUpdate(activeChatId, { updatedAt: new Date() }, { new: true });
       }
     }
 
-    const userMessage = await messageModel.create({
+    await messageModel.create({
       chat: activeChatId,
       content: message,
       role: "user"
-    })
+    });
 
-    const messages = await messageModel.find({ chat: activeChatId })
+    const messages = await messageModel.find({ chat: activeChatId });
 
-    const result = await generateResponse(messages, model)
+    // 2. Execute model response inside Request Context block
+    let responseObj;
+    await requestContext.run({ userId, modelId: targetModel, allowedTools }, async () => {
+      responseObj = await generateResponse(messages, targetModel, userPlan, proPreviewRemaining);
+    });
 
     const aiMessage = await messageModel.create({
       chat: activeChatId,
-      content: result,
+      content: responseObj.text,
       role: "ai"
-    })
+    });
+
+    // 3. Decrement Pro Preview counter if request used a Pro model under preview
+    let updatedProPreviewRemaining = proPreviewRemaining;
+    if (responseObj.isProPreviewEligible && userPlan !== "pro") {
+      updatedProPreviewRemaining = await decrementProPreview(userId);
+    }
+
+    // 4. Increment request count and token usage
+    await recordUsage(userId, responseObj.modelUsed, responseObj.inputTokens, responseObj.outputTokens, responseObj.toolCallsCount);
 
     res.status(201).json({
       title: title || (chat ? chat.title : null),
       chat: chat,
-      aiMessage
-    })
+      aiMessage,
+      requestedModel: responseObj.requestedModel,
+      actualModel: responseObj.actualModel,
+      fallbackUsed: responseObj.fallbackUsed,
+      fallbackReason: responseObj.fallbackReason,
+      routingReason: responseObj.routingReason,
+      proPreviewRemaining: updatedProPreviewRemaining
+    });
   } catch (err) {
-    console.error("sendMessage error:", err)
-    res.status(500).json({ message: "Failed to send message", error: err.message })
+    console.error("sendMessage error:", err);
+    res.status(500).json({ message: "Failed to send message", error: err.message });
   }
 }
 
 export async function getChats(req, res) {
-  const user = req.user
-
-  const chats = await chatModel.find({ user: user.id }).sort({ updatedAt: -1 })
-
+  const user = req.user;
+  const chats = await chatModel.find({ user: user.id }).sort({ updatedAt: -1 });
   res.status(200).json({
-    message: "Chats retrieved succesfully",
+    message: "Chats retrieved successfully",
     chats
-  })
+  });
 }
 
 export async function getMessage(req, res) {
-  const { chatId } = req.params
-
+  const { chatId } = req.params;
   const chat = await chatModel.findOne({
     _id: chatId,
     user: req.user.id
-  })
+  });
   if (!chat) {
-    return res.status(404).json({
-      message: "chat not found"
-    })
+    return res.status(404).json({ message: "Chat not found" });
   }
 
-  const messages = await messageModel.find({
-    chat: chatId
-  })
-
+  const messages = await messageModel.find({ chat: chatId });
   res.status(200).json({
-    message: "messages retrieved succesfully",
+    message: "Messages retrieved successfully",
     messages
-  })
-
-
-
+  });
 }
 
 export async function deleteChat(req, res) {
-  const { chatId } = req.params
-
+  const { chatId } = req.params;
   const chat = await chatModel.findOneAndDelete({
     _id: chatId,
     user: req.user.id
-  })
+  });
 
-  await messageModel.deleteMany({
-    chat: chatId
-  })
-
+  await messageModel.deleteMany({ chat: chatId });
 
   if (!chat) {
-    return res.status(404).json({
-      message: "Chat not found"
-    })
+    return res.status(404).json({ message: "Chat not found" });
   }
 
-  res.status(200).json({
-    message: "Chat deleted Sucessfully"
-  })
-
-
-
-
+  res.status(200).json({ message: "Chat deleted successfully" });
 }
