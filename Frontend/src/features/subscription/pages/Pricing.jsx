@@ -221,7 +221,7 @@ const Pricing = () => {
                 </span>
               </div>
               <div className="mb-4">
-                <span className="text-3xl font-black text-white">₹85</span>
+                <span className="text-3xl font-black text-white">₹96</span>
                 <span className="text-xs text-neutral-400 font-semibold"> ($1) for your {FRONTEND_PRICING_CONFIG.introductoryPeriodText}</span>
                 <p className="text-[11px] text-neutral-500 font-semibold mt-1">Then ₹249 ($2.99)/month automatically</p>
               </div>

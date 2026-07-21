@@ -23,7 +23,7 @@ let groqGemmaModel = null;
 function getGeminiLiteModel() {
   if (!geminiLiteModel) {
     geminiLiteModel = new ChatGoogleGenerativeAI({
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-2.0-flash-lite",
       apiKey: process.env.GEMINI_API_KEY || "AIzaSy_dummy_key",
     });
   }
@@ -33,7 +33,7 @@ function getGeminiLiteModel() {
 function getGeminiFlashModel() {
   if (!geminiFlashModel) {
     geminiFlashModel = new ChatGoogleGenerativeAI({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       apiKey: process.env.GEMINI_API_KEY || "AIzaSy_dummy_key",
     });
   }
@@ -113,6 +113,24 @@ function enforceToolPermission(toolName) {
   }
 }
 
+// Helper to run internal tool AI tasks with a fallback
+async function runInternalAITask(systemPrompt, userPrompt) {
+  try {
+    const response = await getGroqLlamaModel().invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userPrompt)
+    ]);
+    return response.content;
+  } catch (err) {
+    console.error("Internal AI task error, falling back to Mistral:", err);
+    const response = await getMistralSmallModel().invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userPrompt)
+    ]);
+    return response.content;
+  }
+}
+
 const searchInternetTool = tool(
   async (args) => {
     enforceToolPermission("searchInternet");
@@ -146,21 +164,10 @@ const emailTool = tool(
 const explainCodeTool = tool(
   async ({ code, language }) => {
     enforceToolPermission("explain_code");
-    console.log("🛠️ Tool explain_code triggered");
-    try {
-      const response = await getGeminiLiteModel().invoke([
-        new SystemMessage(`You are Aether's internal code explanation helper. Explain this ${language || ''} code clearly, highlighting logic, execution flow, and structure. Keep it beginner-friendly but technically accurate.`),
-        new HumanMessage(code)
-      ]);
-      return response.text;
-    } catch (err) {
-      console.error("explain_code tool error on Gemini, falling back to Mistral:", err);
-      const response = await getMistralSmallModel().invoke([
-        new SystemMessage(`You are Aether's internal code explanation helper. Explain this ${language || ''} code clearly, highlighting logic, execution flow, and structure. Keep it beginner-friendly but technically accurate.`),
-        new HumanMessage(code)
-      ]);
-      return response.text;
-    }
+    return runInternalAITask(
+      `You are Aether's internal code explanation helper. Explain this ${language || ''} code clearly, highlighting logic, execution flow, and structure. Keep it beginner-friendly but technically accurate.`,
+      code
+    );
   },
   {
     name: "explain_code",
@@ -175,22 +182,11 @@ const explainCodeTool = tool(
 const analyzeErrorTool = tool(
   async ({ error, code }) => {
     enforceToolPermission("analyze_error");
-    console.log("🛠️ Tool analyze_error triggered");
     const prompt = `Error/Stack trace:\n${error}\n\n${code ? `Associated Code:\n${code}` : ''}`;
-    try {
-      const response = await getGeminiLiteModel().invoke([
-        new SystemMessage(`You are Aether's internal error analysis assistant. Diagnose the root cause of this error log/stack trace, explain why it happened, and suggest step-by-step resolution steps.`),
-        new HumanMessage(prompt)
-      ]);
-      return response.text;
-    } catch (err) {
-      console.error("analyze_error tool error on Gemini, falling back to Mistral:", err);
-      const response = await getMistralSmallModel().invoke([
-        new SystemMessage(`You are Aether's internal error analysis assistant. Diagnose the root cause of this error log/stack trace, explain why it happened, and suggest step-by-step resolution steps.`),
-        new HumanMessage(prompt)
-      ]);
-      return response.text;
-    }
+    return runInternalAITask(
+      `You are Aether's internal error analysis assistant. Diagnose the root cause of this error log/stack trace, explain why it happened, and suggest step-by-step resolution steps.`,
+      prompt
+    );
   },
   {
     name: "analyze_error",
@@ -205,21 +201,10 @@ const analyzeErrorTool = tool(
 const reviewCodeTool = tool(
   async ({ code }) => {
     enforceToolPermission("review_code");
-    console.log("🛠️ Tool review_code triggered");
-    try {
-      const response = await getGeminiLiteModel().invoke([
-        new SystemMessage(`You are Aether's code review assistant. Perform a security, performance, and best-practices code review. List issues cleanly with severity ratings (High/Medium/Low) and actionable recommendations.`),
-        new HumanMessage(code)
-      ]);
-      return response.text;
-    } catch (err) {
-      console.error("review_code tool error on Gemini, falling back to Mistral:", err);
-      const response = await getMistralSmallModel().invoke([
-        new SystemMessage(`You are Aether's code review assistant. Perform a security, performance, and best-practices code review. List issues cleanly with severity ratings (High/Medium/Low) and actionable recommendations.`),
-        new HumanMessage(code)
-      ]);
-      return response.text;
-    }
+    return runInternalAITask(
+      `You are Aether's code review assistant. Perform a security, performance, and best-practices code review. List issues cleanly with severity ratings (High/Medium/Low) and actionable recommendations.`,
+      code
+    );
   },
   {
     name: "review_code",
@@ -233,22 +218,11 @@ const reviewCodeTool = tool(
 const fixCodeTool = tool(
   async ({ code, issue }) => {
     enforceToolPermission("fix_code");
-    console.log("🛠️ Tool fix_code triggered");
     const prompt = `Code to fix:\n${code}\n\n${issue ? `Issue/Requirement:\n${issue}` : ''}`;
-    try {
-      const response = await getGeminiLiteModel().invoke([
-        new SystemMessage(`You are Aether's automated code fixing assistant. Return the complete corrected code with inline comments explaining what was fixed.`),
-        new HumanMessage(prompt)
-      ]);
-      return response.text;
-    } catch (err) {
-      console.error("fix_code tool error on Gemini, falling back to Mistral:", err);
-      const response = await getMistralSmallModel().invoke([
-        new SystemMessage(`You are Aether's automated code fixing assistant. Return the complete corrected code with inline comments explaining what was fixed.`),
-        new HumanMessage(prompt)
-      ]);
-      return response.text;
-    }
+    return runInternalAITask(
+      `You are Aether's automated code fixing assistant. Return the complete corrected code with inline comments explaining what was fixed.`,
+      prompt
+    );
   },
   {
     name: "fix_code",
@@ -356,7 +330,7 @@ export async function generateResponse(messages, selectedModel = "auto", userPla
       reportProviderSuccess(providerKey);
 
       const lastMessage = response.messages[response.messages.length - 1];
-      const lastText = lastMessage.text && lastMessage.text.trim() ? lastMessage.text : "Done!";
+      const lastText = lastMessage.content && lastMessage.content.trim() ? lastMessage.content : "Done!";
 
       const usage = lastMessage.usage_metadata || lastMessage.response_metadata?.tokenUsage || {};
       let inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
@@ -420,15 +394,16 @@ export async function generateResponse(messages, selectedModel = "auto", userPla
 
 export async function generateTitle(message) {
   try {
-    const response = await getGeminiFlashModel().invoke([
+    const response = await getGroqLlamaModel().invoke([
       new SystemMessage(`
         You are a helpful assistant that generates concise and descriptive titles for chat conversations.
         User will provide you with the first message of a chat conversation, and you will generate a title that captures the essence of the conversation in 2-4 words.
       `),
       new HumanMessage(`Generate a title for a chat conversation based on: "${message}"`),
     ]);
-    return response.text;
+    return response.content;
   } catch (err) {
+    console.error("generateTitle Error:", err);
     return "New Conversation";
   }
 }

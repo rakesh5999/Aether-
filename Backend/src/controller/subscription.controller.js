@@ -263,9 +263,9 @@ export async function createRazorpayOrder(req, res) {
     const isLiveMode = process.env.RAZORPAY_KEY_ID.startsWith("rzp_live_");
     console.log(`💳 Razorpay Order Creation: [${isLiveMode ? "LIVE PRODUCTION" : "TEST SANDBOX"}] Mode`);
 
-    // Introductory offer calculation ($1 ≈ ₹85 = 8500 paisa; Regular $2.99 ≈ ₹249 = 24900 paisa)
+    // Introductory offer calculation ($1 ≈ ₹96 = 9600 paisa; Regular $2.99 ≈ ₹249 = 24900 paisa)
     const isIntro = !user.introductoryOfferUsed;
-    const amountPaisa = isIntro ? 8500 : 24900;
+    const amountPaisa = isIntro ? 9600 : 24900;
 
     const options = {
       amount: amountPaisa,
