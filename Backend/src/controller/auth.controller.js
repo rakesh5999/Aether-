@@ -46,20 +46,25 @@ export const register = async (req, res) => {
 
 
   const backendUrl = getBackendUrl(req);
-  await sendEmail({
-    to: email,
-    subject: "Welcome to Our Aether App",
-    html: `
-        <p>Hi <strong>${username},</strong>, 
-          welcome to our Aether App!</p>
-        <p>thank you for registering with our Aether App. Please verify your email by clicking the link below:</p>
-        <a href="${backendUrl}/api/auth/verify-email?token=${emailVerificationToken}"><strong>Verify Email</strong></a>
-        <br/>
-        <p>If you did not register for our Aether App, please ignore this email.</p>
-        <p>Best regards,</p>  
-        <p>Aether App Team</p>
-          `
-  });
+  try {
+    await sendEmail({
+      to: email,
+      subject: "Welcome to Our Aether App",
+      html: `
+          <p>Hi <strong>${username},</strong>, 
+            welcome to our Aether App!</p>
+          <p>thank you for registering with our Aether App. Please verify your email by clicking the link below:</p>
+          <a href="${backendUrl}/api/auth/verify-email?token=${emailVerificationToken}"><strong>Verify Email</strong></a>
+          <br/>
+          <p>If you did not register for our Aether App, please ignore this email.</p>
+          <p>Best regards,</p>  
+          <p>Aether App Team</p>
+            `
+    });
+  } catch (emailErr) {
+    console.error("Failed to send verification email:", emailErr.message);
+    // Continue with registration even if email fails (often happens when GOOGLE_ credentials are not set up in production)
+  }
 
   res.status(201).json({
     message: "User registered successfully",
@@ -265,26 +270,35 @@ export const resendVerificationEmail = async (req, res) => {
 
 
   const backendUrl = getBackendUrl(req);
-  await sendEmail({
-    to: user.email,
-    subject: "Verify your email",
-    html: `
-      <p>Hi <strong>${user.username}</strong>,</p>
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: "Verify your email",
+      html: `
+        <p>Hi <strong>${user.username}</strong>,</p>
 
-      <p>
-        Please verify your email by clicking the link below:
-      </p>
+        <p>
+          Please verify your email by clicking the link below:
+        </p>
 
-      <a href="${backendUrl}/api/auth/verify-email?token=${token}">
-        <strong>Verify Email</strong>
-      </a>
+        <a href="${backendUrl}/api/auth/verify-email?token=${token}">
+          <strong>Verify Email</strong>
+        </a>
 
-      <br/>
+        <br/>
 
-      <p>Best regards,</p>
-      <p>Aether App Team</p>
-    `
-  });
+        <p>Best regards,</p>
+        <p>Aether App Team</p>
+      `
+    });
+  } catch (emailErr) {
+    console.error("Failed to resend verification email:", emailErr.message);
+    return res.status(500).json({
+      message: "Failed to send email. Please check server email credentials.",
+      success: false,
+      err: emailErr.message
+    });
+  }
 
   return res.status(200).json({
     message: "Verification email sent successfully",
