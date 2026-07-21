@@ -91,6 +91,14 @@ export async function createPortalSession(req, res) {
   try {
     const userId = req.user.id;
     const user = await userModel.findById(userId);
+    
+    if (user && user.paymentProvider === "razorpay") {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Your Aether Pro access was purchased as a one-time pass via Razorpay. It will not auto-renew and no further billing management is required." 
+      });
+    }
+
     if (!user || !user.paymentCustomerId) {
       return res.status(400).json({ success: false, message: "No billing profile found for this user." });
     }
