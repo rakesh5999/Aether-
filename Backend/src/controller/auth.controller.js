@@ -11,7 +11,7 @@ const getFrontendUrl = (req) => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
   const origin = req.get('origin');
   if (origin) return origin;
-  
+
   const host = req.get('host');
   if (host) {
     const hostname = host.split(':')[0];

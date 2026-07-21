@@ -14,23 +14,23 @@ const transporter = nodemailer.createTransport({
 
 
 transporter.verify()
-.then(() => {
-  console.log("Ready to send emails");
-})
-.catch((err) => {
-  console.error("Error verifying transporter:", err);
-});
+  .then(() => {
+    console.log("Ready to send emails");
+  })
+  .catch((err) => {
+    console.error("Error verifying transporter:", err);
+  });
 
-export async function sendEmail({to, subject, html, text=""}) {
-    const mailOptions = {
-      to,
-      subject,
-      text,
-      html,
-    };
+export async function sendEmail({ to, subject, html, text = "" }) {
+  const mailOptions = {
+    to,
+    subject,
+    text,
+    html,
+  };
 
-    const details = await transporter.sendMail(mailOptions);
-    console.log("Email sent:", details);
-    return "email sent successfully to" + to;
-  }
+  const details = await transporter.sendMail(mailOptions);
+  console.log("Email sent:", details);
+  return "email sent successfully to" + to;
+}
 
