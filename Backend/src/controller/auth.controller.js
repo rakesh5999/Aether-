@@ -47,7 +47,8 @@ export const register = async (req, res) => {
 
   const backendUrl = getBackendUrl(req);
   try {
-    await sendEmail({
+    // Fire and forget: Do not await this so it doesn't block the user from registering if SMTP hangs
+    sendEmail({
       to: email,
       subject: "Welcome to Our Aether App",
       html: `
@@ -60,10 +61,11 @@ export const register = async (req, res) => {
           <p>Best regards,</p>  
           <p>Aether App Team</p>
             `
+    }).catch(emailErr => {
+      console.error("Async email send failed:", emailErr.message);
     });
   } catch (emailErr) {
-    console.error("Failed to send verification email:", emailErr.message);
-    // Continue with registration even if email fails (often happens when GOOGLE_ credentials are not set up in production)
+    console.error("Failed to initiate verification email:", emailErr.message);
   }
 
   res.status(201).json({
