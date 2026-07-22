@@ -320,3 +320,34 @@ export const logout = async (req, res) => {
     success: true
   });
 };
+
+export const testEmail = async (req, res) => {
+  const recipient = req.query.to || process.env.GOOGLE_USER;
+  if (!recipient) {
+    return res.status(400).json({ success: false, message: "Pass ?to=your_email@gmail.com in URL query parameter" });
+  }
+
+  const envCheck = {
+    GOOGLE_USER: !!process.env.GOOGLE_USER,
+    GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_REFRESH_TOKEN: !!process.env.GOOGLE_REFRESH_TOKEN,
+  };
+
+  try {
+    const result = await sendEmail({
+      to: recipient,
+      subject: "Aether AI Email Diagnostic Test",
+      html: "<p>If you receive this, your email configuration on Render is working perfectly!</p>"
+    });
+    return res.status(200).json({ success: true, message: "Email sent successfully!", result, envCheck });
+  } catch (error) {
+    console.error("Test email failed:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Email sending failed",
+      error: error.message,
+      envCheck
+    });
+  }
+};

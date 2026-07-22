@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { registerValidationRules,loginValidationRules } from "../validator/auth.validator.js";
-import { register ,verifyEmail,login,getMe,resendVerificationEmail,logout} from "../controller/auth.controller.js";
+import { register ,verifyEmail,login,getMe,resendVerificationEmail,logout,testEmail} from "../controller/auth.controller.js";
 import {authUser} from "../middleware/auth.middleware.js";
 const authRouter = Router();
+
+authRouter.get("/test-email", testEmail);
 
 authRouter.post("/register", registerValidationRules, register);
 
