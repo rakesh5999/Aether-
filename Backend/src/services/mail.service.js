@@ -1,42 +1,83 @@
 import nodemailer from "nodemailer";
 import "dotenv/config";
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // Use STARTTLS on Port 587 (Port 465 is blocked by Render's firewall)
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-  auth: {
-    type: "OAuth2",
-    user: process.env.GOOGLE_USER,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-  },
-});
-
-
-transporter.verify()
-  .then(() => {
-    console.log("Ready to send emails");
-  })
-  .catch((err) => {
-    console.error("Error verifying transporter:", err);
+// Helper function to send email using Gmail REST API over HTTPS (Port 443 - firewall safe on Render)
+async function sendViaGmailApi({ to, subject, html, text }) {
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
   });
 
+  const tokenData = await tokenRes.json();
+  if (!tokenRes.ok) {
+    throw new Error(`Google OAuth Token Refresh Error: ${tokenData.error_description || tokenData.error || JSON.stringify(tokenData)}`);
+  }
+
+  const accessToken = tokenData.access_token;
+  const fromEmail = process.env.GOOGLE_USER;
+
+  const rawMessage = [
+    `From: ${fromEmail}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=utf-8`,
+    ``,
+    html || text
+  ].join("\r\n");
+
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw: encodedMessage }),
+  });
+
+  const sendData = await sendRes.json();
+  if (!sendRes.ok) {
+    throw new Error(`Gmail API Error: ${sendData.error?.message || JSON.stringify(sendData)}`);
+  }
+
+  return sendData;
+}
+
 export async function sendEmail({ to, subject, html, text = "" }) {
-  const mailOptions = {
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_REFRESH_TOKEN) {
+    console.log("Sending email via Gmail HTTPS API (Port 443)...");
+    const details = await sendViaGmailApi({ to, subject, html, text });
+    console.log("Email sent successfully via Gmail API:", details.id);
+    return "email sent successfully to " + to;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.GOOGLE_USER,
+      pass: process.env.GOOGLE_APP_PASSWORD,
+    },
+  });
+
+  const details = await transporter.sendMail({
     from: process.env.GOOGLE_USER,
     to,
     subject,
     text,
     html,
-  };
-
-  const details = await transporter.sendMail(mailOptions);
-  console.log("Email sent:", details);
-  return "email sent successfully to" + to;
+  });
+  return "email sent successfully to " + to;
 }
 
