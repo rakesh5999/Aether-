@@ -2,10 +2,12 @@ import nodemailer from "nodemailer";
 import "dotenv/config";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-  connectionTimeout: 8000,
-  greetingTimeout: 8000,
-  socketTimeout: 10000,
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // Use STARTTLS on Port 587 (Port 465 is blocked by Render's firewall)
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
   auth: {
     type: "OAuth2",
     user: process.env.GOOGLE_USER,
