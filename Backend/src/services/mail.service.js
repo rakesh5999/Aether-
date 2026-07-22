@@ -22,14 +22,32 @@ async function sendViaGmailApi({ to, subject, html, text }) {
   const accessToken = tokenData.access_token;
   const fromEmail = process.env.GOOGLE_USER;
 
+  const boundary = "====_Aether_AI_" + Date.now().toString(16);
+  const dateStr = new Date().toUTCString();
+  const plainText = text || "Please verify your email by clicking the link in the email.";
+
   const rawMessage = [
-    `From: ${fromEmail}`,
+    `From: "Aether AI" <${fromEmail}>`,
+    `Reply-To: ${fromEmail}`,
     `To: ${to}`,
     `Subject: ${subject}`,
+    `Date: ${dateStr}`,
     `MIME-Version: 1.0`,
-    `Content-Type: text/html; charset=utf-8`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ``,
-    html || text
+    `--${boundary}`,
+    `Content-Type: text/plain; charset=utf-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    ``,
+    plainText,
+    ``,
+    `--${boundary}`,
+    `Content-Type: text/html; charset=utf-8`,
+    `Content-Transfer-Encoding: 7bit`,
+    ``,
+    html,
+    ``,
+    `--${boundary}--`
   ].join("\r\n");
 
   const encodedMessage = Buffer.from(rawMessage)
