@@ -3,21 +3,31 @@ import jwt from "jsonwebtoken";
 import { sendEmail } from "../services/mail.service.js";
 
 const getBackendUrl = (req) => {
-  if (process.env.BACKEND_URL) return process.env.BACKEND_URL;
-  return `${req.protocol}://${req.get('host')}`;
+  let url = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/$/, "");
 };
 
 const getFrontendUrl = (req) => {
-  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-  const origin = req.get('origin');
-  if (origin) return origin;
+  let url = process.env.FRONTEND_URL;
+  if (!url) {
+    const origin = req.get('origin');
+    if (origin) return origin.replace(/\/$/, "");
 
-  const host = req.get('host');
-  if (host) {
-    const hostname = host.split(':')[0];
-    return `${req.protocol}://${hostname}:5173`;
+    const host = req.get('host');
+    if (host) {
+      const hostname = host.split(':')[0];
+      return `${req.protocol}://${hostname}:5173`;
+    }
+    return "http://localhost:5173";
   }
-  return "http://localhost:5173";
+
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/$/, "");
 };
 
 
