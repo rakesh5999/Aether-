@@ -54,8 +54,7 @@ export async function sendMessage(req, res) {
   // Guest Chat logic for unauthenticated users
   if (!userId) {
     try {
-      const modelConfig = modelsConfig[targetModel] || modelsConfig["auto"];
-      const allowedTools = modelConfig.allowedTools || ["all"];
+      const allowedTools = ["all"];
 
       let formattedMessages = Array.isArray(history) && history.length > 0 ? history : [];
       formattedMessages.push({ role: "user", content: message });
@@ -97,8 +96,7 @@ export async function sendMessage(req, res) {
     }
 
     const { userPlan, proPreviewRemaining } = limitCheck;
-    const modelConfig = modelsConfig[targetModel] || modelsConfig["auto"];
-    const allowedTools = modelConfig.allowedTools || ["all"];
+    const allowedTools = ["all"];
 
     let title = null, chat = null;
     let activeChatId = chatId;
