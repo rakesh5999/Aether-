@@ -104,15 +104,14 @@ export function getProviderHealthStatus() {
  */
 export function getFallbackChain(requestedModelId, userPlan = "free") {
   const fallbackMap = {
-    "gemini-2.5-flash-lite": ["gemini-2.5-flash", "gemma2-9b-it", "llama-3.3-70b-versatile"],
-    "gemini-2.5-flash": ["gemini-2.5-flash-lite", "gemma2-9b-it", "llama-3.3-70b-versatile"],
-    "llama-3.3-70b-versatile": ["gemma2-9b-it", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
-    "gemma2-9b-it": ["llama-3.3-70b-versatile", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
-    "gpt-4o-mini": ["mistral-small-latest", "llama-3.3-70b-versatile", "gemma2-9b-it", "gemini-2.5-flash"],
-    "mistral-small-latest": ["gpt-4o-mini", "mistral-large-latest", "llama-3.3-70b-versatile", "gemma2-9b-it"],
-    "mistral-large-latest": ["mistral-small-latest", "gpt-4o-mini", "llama-3.3-70b-versatile", "gemma2-9b-it"]
+    "gemini-2.5-flash-lite": ["llama-3.3-70b-versatile", "mistral-small-latest", "gemini-2.5-flash", "gpt-4o-mini"],
+    "gemini-2.5-flash": ["llama-3.3-70b-versatile", "mistral-small-latest", "gemini-2.5-flash-lite", "gpt-4o-mini"],
+    "llama-3.3-70b-versatile": ["gemini-2.5-flash-lite", "mistral-small-latest", "gemini-2.5-flash", "gpt-4o-mini"],
+    "gpt-4o-mini": ["mistral-small-latest", "llama-3.3-70b-versatile", "gemini-2.5-flash-lite", "mistral-large-latest"],
+    "mistral-small-latest": ["llama-3.3-70b-versatile", "gemini-2.5-flash-lite", "gpt-4o-mini", "mistral-large-latest"],
+    "mistral-large-latest": ["mistral-small-latest", "llama-3.3-70b-versatile", "gpt-4o-mini", "gemini-2.5-flash"]
   };
 
-  const chain = fallbackMap[requestedModelId] || ["gemma2-9b-it", "gemini-2.5-flash-lite"];
+  const chain = fallbackMap[requestedModelId] || ["llama-3.3-70b-versatile", "gemini-2.5-flash-lite", "mistral-small-latest"];
   return chain;
 }

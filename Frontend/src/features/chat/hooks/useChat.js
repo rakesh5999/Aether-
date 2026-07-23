@@ -38,9 +38,19 @@ export const useChat = () => {
           title
         }));
       }
-      return data;
     } catch (error) {
-      dispatch(setError(error.message));
+      const apiErr = error.response?.data;
+      const safeMessage = apiErr?.error?.message || apiErr?.message || "Aether is temporarily unable to respond. Please try again shortly.";
+
+      if (apiErr?.error?.code === "AI_PROVIDER_UNAVAILABLE" || error.response?.status === 503) {
+        dispatch(addNewMessages({
+          chatId,
+          content: `⚠️ ${safeMessage}`,
+          role: "ai"
+        }));
+      }
+
+      dispatch(setError(safeMessage));
       throw error;
     } finally {
       dispatch(setLoading(false));

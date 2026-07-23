@@ -56,19 +56,6 @@ export const modelsConfig = {
     desc: "Powerful open reasoning (All Tools enabled)",
     color: "text-amber-400"
   },
-  "gemma2-9b-it": {
-    id: "gemma2-9b-it",
-    displayName: "Gemma 2 9B (Groq)",
-    provider: "Groq",
-    providerKey: "groq",
-    plan: "free",
-    allowedTools: ["all"],
-    dailyRequestLimit: 50,
-    tokenLimit: 200000,
-    enabled: true,
-    desc: "Fast & conversational (All Tools enabled)",
-    color: "text-orange-400"
-  },
   "gpt-4o-mini": {
     id: "gpt-4o-mini",
     displayName: "GPT-4o Mini",

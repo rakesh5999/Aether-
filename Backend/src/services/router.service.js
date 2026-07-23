@@ -15,8 +15,8 @@ export function selectAutoModel({ prompt = "", messages = [], userPlan = "free",
 
   const canUsePro = userPlan === "pro" || proPreviewRemaining > 0;
 
-  let chosenModelId = "gemma2-9b-it";
-  let routingReason = "Selected fast & efficient Groq Gemma 2 9B model.";
+  let chosenModelId = "llama-3.3-70b-versatile";
+  let routingReason = "Selected fast & efficient Llama 3.3 70B model.";
   let isPreviewEligible = false;
 
   if (canUsePro) {
@@ -41,8 +41,8 @@ export function selectAutoModel({ prompt = "", messages = [], userPlan = "free",
         routingReason = "Routed to GPT-4o Mini for reliable general conversation.";
         isPreviewEligible = userPlan !== "pro";
       } else if (isProviderAvailable("groq")) {
-        chosenModelId = "gemma2-9b-it";
-        routingReason = "Routed to Gemma 2 9B for fast responses.";
+        chosenModelId = "llama-3.3-70b-versatile";
+        routingReason = "Routed to Llama 3.3 70B for fast responses.";
       }
     }
   } else {
@@ -65,8 +65,8 @@ export function selectAutoModel({ prompt = "", messages = [], userPlan = "free",
       }
     } else {
       if (isProviderAvailable("groq")) {
-        chosenModelId = "gemma2-9b-it";
-        routingReason = "Routed to Gemma 2 9B for speedy conversation.";
+        chosenModelId = "llama-3.3-70b-versatile";
+        routingReason = "Routed to Llama 3.3 70B for speedy conversation.";
       } else if (isProviderAvailable("google")) {
         chosenModelId = "gemini-2.5-flash-lite";
         routingReason = "Routed to Gemini Flash Lite for fast response.";
@@ -101,8 +101,8 @@ function getProviderKeyForModel(modelId) {
 function getNextAvailableModel(userPlan, proPreviewRemaining) {
   const canUsePro = userPlan === "pro" || proPreviewRemaining > 0;
   const candidates = canUsePro
-    ? ["gpt-4o-mini", "llama-3.3-70b-versatile", "gemma2-9b-it", "gemini-2.5-flash", "mistral-small-latest", "gemini-2.5-flash-lite"]
-    : ["llama-3.3-70b-versatile", "gemma2-9b-it", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
+    ? ["gpt-4o-mini", "llama-3.3-70b-versatile", "gemini-2.5-flash", "mistral-small-latest", "gemini-2.5-flash-lite"]
+    : ["llama-3.3-70b-versatile", "gemini-2.5-flash-lite", "gemini-2.5-flash"];
 
   for (const modelId of candidates) {
     const key = getProviderKeyForModel(modelId);
@@ -112,5 +112,5 @@ function getNextAvailableModel(userPlan, proPreviewRemaining) {
     }
   }
 
-  return { modelId: "gemma2-9b-it", isPreviewEligible: false };
+  return { modelId: "llama-3.3-70b-versatile", isPreviewEligible: false };
 }

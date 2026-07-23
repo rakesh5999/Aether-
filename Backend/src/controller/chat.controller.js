@@ -65,6 +65,7 @@ export async function sendMessage(req, res) {
       });
 
       return res.status(201).json({
+        success: true,
         title: "Guest Chat",
         chat: null,
         aiMessage: {
@@ -79,8 +80,14 @@ export async function sendMessage(req, res) {
         routingReason: responseObj.routingReason
       });
     } catch (guestErr) {
-      console.error("Guest sendMessage error:", guestErr);
-      return res.status(500).json({ message: "Failed to generate response for guest user", error: guestErr.message });
+      console.error("Guest sendMessage error details:", guestErr.lastError || guestErr);
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: guestErr.code || "AI_PROVIDER_UNAVAILABLE",
+          message: "Aether is temporarily unable to respond. Please try again shortly."
+        }
+      });
     }
   }
 
@@ -148,6 +155,7 @@ export async function sendMessage(req, res) {
     await recordUsage(userId, responseObj.modelUsed, responseObj.inputTokens, responseObj.outputTokens, responseObj.toolCallsCount);
 
     res.status(201).json({
+      success: true,
       title: title || (chat ? chat.title : null),
       chat: chat,
       aiMessage,
@@ -159,8 +167,15 @@ export async function sendMessage(req, res) {
       proPreviewRemaining: updatedProPreviewRemaining
     });
   } catch (err) {
-    console.error("sendMessage error:", err);
-    res.status(500).json({ message: "Failed to send message", error: err.message });
+    console.error("sendMessage error details:", err.lastError || err);
+    const statusCode = err.code === "AI_PROVIDER_UNAVAILABLE" ? 503 : 500;
+    res.status(statusCode).json({
+      success: false,
+      error: {
+        code: err.code || "AI_PROVIDER_UNAVAILABLE",
+        message: err.message || "Aether is temporarily unable to respond. Please try again shortly."
+      }
+    });
   }
 }
 

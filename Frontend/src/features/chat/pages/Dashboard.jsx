@@ -143,7 +143,6 @@ const DEFAULT_MODELS = [
   { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", provider: "Google", desc: "Fast & lightweight assistance (Limited Availability)", color: "text-blue-500", plan: "free" },
   { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "Google", desc: "Balanced model for complex logic (Limited Availability)", color: "text-indigo-500", plan: "free" },
   { id: "llama-3.3-70b-versatile", displayName: "Llama 3.3 70B (Groq)", provider: "Groq", desc: "Powerful open reasoning", color: "text-amber-500", plan: "free" },
-  { id: "gemma2-9b-it", displayName: "Gemma 2 9B (Groq)", provider: "Groq", desc: "Fast & conversational", color: "text-orange-500", plan: "free" },
   { id: "gpt-4o-mini", displayName: "GPT-4o Mini", provider: "OpenAI", desc: "Highly accurate and speedy", color: "text-emerald-500", plan: "pro" },
   { id: "mistral-small-latest", displayName: "Mistral Small", provider: "Mistral", desc: "Efficient reasoning & explanations", color: "text-teal-500", plan: "pro" },
   { id: "mistral-large-latest", displayName: "Mistral Large", provider: "Mistral", desc: "Full-capability advanced reasoning", color: "text-purple-500", plan: "pro" }

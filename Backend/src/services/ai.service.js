@@ -18,7 +18,6 @@ let mistralSmallModel = null;
 let mistralLargeModel = null;
 let gpt4oMiniModel = null;
 let groqLlamaModel = null;
-let groqGemmaModel = null;
 
 function getGeminiLiteModel() {
   if (!geminiLiteModel) {
@@ -80,16 +79,6 @@ function getGroqLlamaModel() {
   return groqLlamaModel;
 }
 
-function getGroqGemmaModel() {
-  if (!groqGemmaModel) {
-    groqGemmaModel = new ChatGroq({
-      model: "gemma2-9b-it",
-      apiKey: process.env.GROQ_API_KEY || "gsk_dummy_key",
-    });
-  }
-  return groqGemmaModel;
-}
-
 function formatMessages(messages) {
   return messages.map((msg) => {
     if (msg.role === "user") {
@@ -106,7 +95,13 @@ function formatMessages(messages) {
 function enforceToolPermission(toolName) {
   const store = requestContext.getStore();
   if (store) {
-    const { allowedTools } = store;
+    const { userId, allowedTools } = store;
+    const isGuest = !userId || userId === "guest";
+
+    if (isGuest && toolName === "emailTool") {
+      throw new Error("AUTH_REQUIRED_TOOL: Please sign in to use this tool.");
+    }
+
     if (allowedTools && !allowedTools.includes("all") && !allowedTools.includes(toolName)) {
       throw new Error(`UNAUTHORIZED_TOOL_CALL: Access to tool '${toolName}' is unauthorized.`);
     }
@@ -162,8 +157,15 @@ const searchInternetTool = tool(
 
 const emailTool = tool(
   async (args) => {
-    enforceToolPermission("emailTool");
-    return sendEmail(args);
+    try {
+      enforceToolPermission("emailTool");
+      return await sendEmail(args);
+    } catch (err) {
+      if (err.message && err.message.includes("AUTH_REQUIRED_TOOL")) {
+        return "Please sign in to use this tool.";
+      }
+      throw err;
+    }
   },
   {
     name: "emailTool",
@@ -259,8 +261,6 @@ function getModelInstance(modelId) {
       return getGeminiFlashModel();
     case "llama-3.3-70b-versatile":
       return getGroqLlamaModel();
-    case "gemma2-9b-it":
-      return getGroqGemmaModel();
     case "mistral-small-latest":
       return getMistralSmallModel();
     case "mistral-large-latest":
@@ -320,8 +320,10 @@ export async function generateResponse(messages, selectedModel = "auto", userPla
     ...formatMessages(messages),
   ];
 
-  // Try primary target model, then fallbacks if failure occurs
-  const candidateChain = [targetModelId, ...getFallbackChain(targetModelId, userPlan)];
+  // Build candidate fallback chain excluding duplicates
+  const rawChain = [targetModelId, ...getFallbackChain(targetModelId, userPlan)];
+  const candidateChain = Array.from(new Set(rawChain)).filter(m => modelsConfig[m] && modelsConfig[m].enabled !== false);
+
   let lastError = null;
 
   for (let i = 0; i < candidateChain.length; i++) {
@@ -391,20 +393,11 @@ export async function generateResponse(messages, selectedModel = "auto", userPla
     }
   }
 
-  // Gracefully return explanatory text instead of crashing with HTTP 500 when all AI providers fail
-  return {
-    text: `⚠️ **Aether Provider Service Notice**: Unable to complete request using AI providers.\n\nPlease ensure valid API keys are configured in your \`Backend/.env\` file:\n- \`GROQ_API_KEY\` (for Groq Llama 3.3 & Gemma 2)\n- \`GEMINI_API_KEY\` (Google AI Studio Key: \`AIzaSy...\`)\n- \`OPENAI_API_KEY\` (for GPT-4o Mini)\n- \`MISTRAL_API_KEY\` (for Mistral Small/Large)\n\n*Error details: ${lastError?.message || "Provider connection failed"}*`,
-    inputTokens: 0,
-    outputTokens: 0,
-    toolCallsCount: 0,
-    modelUsed: targetModelId,
-    requestedModel,
-    actualModel: targetModelId,
-    fallbackUsed: true,
-    fallbackReason: `All candidate providers failed: ${lastError?.message}`,
-    routingReason,
-    isProPreviewEligible: false
-  };
+  // All candidate providers failed — throw custom error instead of leaking raw API details
+  const providerError = new Error("Aether is temporarily unable to respond. Please try again shortly.");
+  providerError.code = "AI_PROVIDER_UNAVAILABLE";
+  providerError.lastError = lastError;
+  throw providerError;
 }
 
 export async function generateTitle(message) {
