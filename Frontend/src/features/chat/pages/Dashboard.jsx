@@ -275,11 +275,14 @@ const Dashboard = () => {
     setInputValue("");
     setFallbackNotice(null);
 
+    const historyPayload = messages.map(m => ({ role: m.role, content: m.content }));
+
     try {
       const res = await chat.handleSendMessage({
         message: currentInput,
         chatId,
         model: selectedModel,
+        history: historyPayload,
       });
 
       if (!user) {
@@ -324,11 +327,14 @@ const Dashboard = () => {
 
     setFallbackNotice(null);
 
+    const historyPayload = messages.map(m => ({ role: m.role, content: m.content }));
+
     try {
       const res = await chat.handleSendMessage({
         message: promptText,
         chatId,
         model: selectedModel,
+        history: historyPayload,
       });
 
       if (!user) {

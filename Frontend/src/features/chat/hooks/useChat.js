@@ -7,7 +7,7 @@ export const useChat = () => {
 
   const dispatch = useDispatch()
 
-  async function handleSendMessage({ message, chatId, model }) {
+  async function handleSendMessage({ message, chatId, model, history }) {
     if (!chatId) return;
 
     // 1. Immediately add the user's message to the UI state
@@ -21,7 +21,7 @@ export const useChat = () => {
 
     try {
       // 2. Call the API (no page reload)
-      const data = await sendMessage({ message, chatId, model })
+      const data = await sendMessage({ message, chatId, model, history })
       const { title, aiMessage } = data
 
       // 3. Automatically add the AI response when it arrives

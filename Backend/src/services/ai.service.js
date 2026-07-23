@@ -113,21 +113,36 @@ function enforceToolPermission(toolName) {
   }
 }
 
-// Helper to run internal tool AI tasks with a fallback
+// Helper to run internal tool AI tasks with multi-provider fallback
 async function runInternalAITask(systemPrompt, userPrompt) {
+  const messages = [
+    new SystemMessage(systemPrompt),
+    new HumanMessage(userPrompt)
+  ];
+
+  // 1. Try Groq Llama
   try {
-    const response = await getGroqLlamaModel().invoke([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(userPrompt)
-    ]);
+    const response = await getGroqLlamaModel().invoke(messages);
     return response.content;
-  } catch (err) {
-    console.error("Internal AI task error, falling back to Mistral:", err);
-    const response = await getMistralSmallModel().invoke([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(userPrompt)
-    ]);
+  } catch (err1) {
+    console.warn("Internal AI task (Groq) failed, trying Gemini fallback...", err1.message);
+  }
+
+  // 2. Try Gemini Flash
+  try {
+    const response = await getGeminiLiteModel().invoke(messages);
     return response.content;
+  } catch (err2) {
+    console.warn("Internal AI task (Gemini) failed, trying Mistral fallback...", err2.message);
+  }
+
+  // 3. Try Mistral Small
+  try {
+    const response = await getMistralSmallModel().invoke(messages);
+    return response.content;
+  } catch (err3) {
+    console.error("All internal tool AI models failed:", err3.message);
+    return `[Code Helper Task: ${systemPrompt}]\n\nCode Content:\n\`\`\`\n${userPrompt}\n\`\`\``;
   }
 }
 
