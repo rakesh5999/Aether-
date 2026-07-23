@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { Link, useNavigate } from "react-router";
 import { useChat } from "../hooks/useChat";
 import { useAuth } from "../../auth/hook/useAuth";
 import { getUsageStats, getModelsRegistry, createCheckoutSession } from "../../subscription/service/subscription.api";
 import { FRONTEND_PRICING_CONFIG } from "../../../config/pricing.config";
+import GuestLimitModal from "../components/GuestLimitModal";
+import { createNewChat, setCurrentChatId, clearChats } from "../chat.slice";
 
 // Custom CodeBlock Component with Language badge and Copy button
 const CodeBlock = ({ language, value }) => {
@@ -23,19 +25,19 @@ const CodeBlock = ({ language, value }) => {
   };
 
   return (
-    <div className="border border-neutral-800 rounded-xl overflow-hidden my-4 bg-neutral-950 font-mono text-sm shadow-md">
-      <div className="flex justify-between items-center px-4 py-2 bg-neutral-900 border-b border-neutral-800 text-xs text-neutral-400 font-semibold select-none">
-        <span className="uppercase tracking-wider text-[10px] text-blue-400">{language || "code"}</span>
+    <div className="border border-neutral-800 rounded-xl overflow-hidden my-4 bg-[#1e1e1e] font-mono text-sm shadow-md">
+      <div className="flex justify-between items-center px-4 py-2 bg-[#252526] border-b border-neutral-800 text-xs text-neutral-400 font-semibold select-none">
+        <span className="uppercase tracking-wider text-[10px] text-orange-400 font-bold">{language || "code"}</span>
         <button
           onClick={handleCopy}
           className="flex items-center gap-1 text-neutral-400 hover:text-white transition-colors focus:outline-none cursor-pointer"
         >
           {copied ? (
             <>
-              <svg className="w-3.5 h-3.5 text-green-400 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 text-emerald-400 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
-              <span className="text-green-400 font-medium">Copied!</span>
+              <span className="text-emerald-400 font-medium">Copied!</span>
             </>
           ) : (
             <>
@@ -73,15 +75,15 @@ const CopyResponseButton = ({ text }) => {
   return (
     <button
       onClick={handleCopy}
-      className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors focus:outline-none cursor-pointer mt-2.5 p-1 rounded hover:bg-neutral-800/50"
+      className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-[#FF6B2C] transition-colors focus:outline-none cursor-pointer mt-2.5 p-1 rounded hover:bg-neutral-100"
       title="Copy full response"
     >
       {copied ? (
         <>
-          <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
           </svg>
-          <span className="text-green-400 font-medium">Copied!</span>
+          <span className="text-emerald-500 font-medium">Copied!</span>
         </>
       ) : (
         <>
@@ -99,14 +101,14 @@ const CopyResponseButton = ({ text }) => {
 const ThinkingLoader = () => {
   return (
     <div className="flex items-start gap-4 py-4">
-      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
-        <span className="text-xs font-bold text-white">AE</span>
+      <div className="w-8 h-8 rounded-xl bg-[#FF6B2C] flex items-center justify-center flex-shrink-0 shadow-sm text-white font-black text-xs mt-1">
+        AE
       </div>
-      <div className="bg-neutral-800/40 rounded-2xl px-5 py-3.5 border border-neutral-700/30 flex items-center gap-1.5 shadow-inner">
-        <span className="text-sm text-neutral-400 font-medium mr-1">Thinking</span>
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:-0.3s]"></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:-0.15s]"></span>
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce"></span>
+      <div className="bg-[#FAF9F6] rounded-2xl px-5 py-3.5 border border-[#EAEAEA] flex items-center gap-1.5 shadow-sm">
+        <span className="text-xs text-neutral-600 font-semibold mr-1">Aether is thinking</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] animate-bounce [animation-delay:-0.3s]"></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] animate-bounce [animation-delay:-0.15s]"></span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] animate-bounce"></span>
       </div>
     </div>
   );
@@ -137,20 +139,21 @@ const suggestions = [
 ];
 
 const DEFAULT_MODELS = [
-  { id: "auto", displayName: "Aether Auto", provider: "Aether Engine", desc: "Smart router selecting the optimal AI model for your prompt", color: "text-emerald-400", plan: "free", badge: "Recommended" },
-  { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", provider: "Google", desc: "Fast & lightweight assistance (Limited Availability)", color: "text-blue-400", plan: "free" },
-  { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "Google", desc: "Balanced model for complex logic (Limited Availability)", color: "text-indigo-400", plan: "free" },
-  { id: "llama-3.3-70b-versatile", displayName: "Llama 3.3 70B (Groq)", provider: "Groq", desc: "Powerful open reasoning", color: "text-amber-400", plan: "free" },
-  { id: "gemma2-9b-it", displayName: "Gemma 2 9B (Groq)", provider: "Groq", desc: "Fast & conversational", color: "text-orange-400", plan: "free" },
-  { id: "gpt-4o-mini", displayName: "GPT-4o Mini", provider: "OpenAI", desc: "Highly accurate and speedy", color: "text-green-400", plan: "pro" },
-  { id: "mistral-small-latest", displayName: "Mistral Small", provider: "Mistral", desc: "Efficient reasoning & explanations", color: "text-teal-400", plan: "pro" },
-  { id: "mistral-large-latest", displayName: "Mistral Large", provider: "Mistral", desc: "Full-capability advanced reasoning", color: "text-purple-400", plan: "pro" }
+  { id: "auto", displayName: "Aether Auto", provider: "Aether Engine", desc: "Smart router selecting the optimal AI model for your prompt", color: "text-[#FF6B2C]", plan: "free", badge: "Recommended" },
+  { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", provider: "Google", desc: "Fast & lightweight assistance (Limited Availability)", color: "text-blue-500", plan: "free" },
+  { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "Google", desc: "Balanced model for complex logic (Limited Availability)", color: "text-indigo-500", plan: "free" },
+  { id: "llama-3.3-70b-versatile", displayName: "Llama 3.3 70B (Groq)", provider: "Groq", desc: "Powerful open reasoning", color: "text-amber-500", plan: "free" },
+  { id: "gemma2-9b-it", displayName: "Gemma 2 9B (Groq)", provider: "Groq", desc: "Fast & conversational", color: "text-orange-500", plan: "free" },
+  { id: "gpt-4o-mini", displayName: "GPT-4o Mini", provider: "OpenAI", desc: "Highly accurate and speedy", color: "text-emerald-500", plan: "pro" },
+  { id: "mistral-small-latest", displayName: "Mistral Small", provider: "Mistral", desc: "Efficient reasoning & explanations", color: "text-teal-500", plan: "pro" },
+  { id: "mistral-large-latest", displayName: "Mistral Large", provider: "Mistral", desc: "Full-capability advanced reasoning", color: "text-purple-500", plan: "pro" }
 ];
 
 const Dashboard = () => {
   const chat = useChat();
   const auth = useAuth();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   const chats = useSelector((state) => state.chat.chats);
   const currentChatId = useSelector((state) => state.chat.currentChatId);
@@ -168,6 +171,7 @@ const Dashboard = () => {
   const [proPreviewRemaining, setProPreviewRemaining] = useState(5);
   const [fallbackNotice, setFallbackNotice] = useState(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [upgradeError, setUpgradeError] = useState("");
 
@@ -178,18 +182,31 @@ const Dashboard = () => {
       ? chats[currentChatId].messages
       : [];
 
-  useEffect(() => {
-    chat.initailzeSocketConnection();
-    chat.handleGetChats();
-    fetchConfig();
-    fetchUsage();
-  }, []);
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
 
   useEffect(() => {
-    if (!isLoading && messages.length > 0) {
+    chat.initailzeSocketConnection();
+    if (user) {
+      chat.handleGetChats();
+      fetchUsage();
+    } else {
+      dispatch(clearChats());
+      dispatch(createNewChat({ chatId: "guest-chat", title: "Guest Chat" }));
+      dispatch(setCurrentChatId("guest-chat"));
+    }
+    fetchConfig();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && !isLoading && messages.length > 0) {
       fetchUsage();
     }
-  }, [isLoading]);
+  }, [isLoading, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -200,13 +217,16 @@ const Dashboard = () => {
   const fetchConfig = async () => {
     try {
       const res = await getModelsRegistry();
-      setModelsConfig(res.models);
+      if (res?.models) {
+        setModelsConfig(res.models);
+      }
     } catch (err) {
       console.error("Failed to load models configuration", err);
     }
   };
 
   const fetchUsage = async () => {
+    if (!user) return;
     try {
       const res = await getUsageStats();
       setUsageStats(res.usage);
@@ -230,23 +250,42 @@ const Dashboard = () => {
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    const currentInput = inputValue.trim();
+    if (!currentInput) return;
+
+    if (!user) {
+      const guestCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
+      if (guestCount >= 3) {
+        setIsGuestModalOpen(true);
+        return;
+      }
+    }
 
     let chatId = currentChatId;
     if (!chatId) {
-      chatId = await chat.handleCreateNewChat();
+      if (user) {
+        chatId = await chat.handleCreateNewChat();
+      } else {
+        chatId = "guest-chat";
+        dispatch(createNewChat({ chatId: "guest-chat", title: "Guest Chat" }));
+        dispatch(setCurrentChatId("guest-chat"));
+      }
     }
 
-    const currentInput = inputValue;
     setInputValue("");
     setFallbackNotice(null);
-    
+
     try {
       const res = await chat.handleSendMessage({
         message: currentInput,
         chatId,
         model: selectedModel,
       });
+
+      if (!user) {
+        const currentCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
+        localStorage.setItem("aether_guest_prompt_count", (currentCount + 1).toString());
+      }
 
       if (res && res.fallbackUsed) {
         setFallbackNotice(`${res.requestedModel} was temporarily unavailable. Aether used ${res.actualModel} instead.`);
@@ -262,9 +301,25 @@ const Dashboard = () => {
   };
 
   const handleSuggestionClick = async (promptText) => {
+    if (!promptText.trim()) return;
+
+    if (!user) {
+      const guestCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
+      if (guestCount >= 3) {
+        setIsGuestModalOpen(true);
+        return;
+      }
+    }
+
     let chatId = currentChatId;
     if (!chatId) {
-      chatId = await chat.handleCreateNewChat();
+      if (user) {
+        chatId = await chat.handleCreateNewChat();
+      } else {
+        chatId = "guest-chat";
+        dispatch(createNewChat({ chatId: "guest-chat", title: "Guest Chat" }));
+        dispatch(setCurrentChatId("guest-chat"));
+      }
     }
 
     setFallbackNotice(null);
@@ -275,6 +330,11 @@ const Dashboard = () => {
         chatId,
         model: selectedModel,
       });
+
+      if (!user) {
+        const currentCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
+        localStorage.setItem("aether_guest_prompt_count", (currentCount + 1).toString());
+      }
 
       if (res && res.fallbackUsed) {
         setFallbackNotice(`${res.requestedModel} was temporarily unavailable. Aether used ${res.actualModel} instead.`);
@@ -338,24 +398,24 @@ const Dashboard = () => {
   const proModels = listModels.filter(m => m.plan === "pro");
 
   return (
-    <div className="h-screen w-screen flex bg-neutral-900 text-neutral-100 font-sans overflow-hidden">
-      
+    <div className="h-screen w-screen flex bg-white text-[#171717] font-sans overflow-hidden">
+
       {/* Mobile Header Bar */}
-      <div className="md:hidden absolute top-0 left-0 right-0 h-14 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between px-4 z-20">
+      <div className="md:hidden absolute top-0 left-0 right-0 h-14 bg-[#FAFAF8] border-b border-[#EAEAEA] flex items-center justify-between px-4 z-20">
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="text-neutral-400 hover:text-white p-1 rounded-md focus:outline-none cursor-pointer"
+          className="text-neutral-600 hover:text-[#171717] p-1.5 rounded-lg focus:outline-none cursor-pointer"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-          {currentChatId && chats[currentChatId] ? chats[currentChatId].title : "Aether"}
+        <span className="text-base font-extrabold text-[#171717]">
+          {currentChatId && chats[currentChatId] ? chats[currentChatId].title : "Aether AI"}
         </span>
         <button
           onClick={startNewChat}
-          className="text-neutral-400 hover:text-white p-1 rounded-md focus:outline-none cursor-pointer"
+          className="text-[#FF6B2C] hover:text-[#E55A1F] p-1.5 rounded-lg focus:outline-none cursor-pointer"
         >
           <svg className="w-5.5 h-5.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4.5v15m7.5-7.5h-15" />
@@ -367,27 +427,27 @@ const Dashboard = () => {
       {isSidebarOpen && (
         <div
           onClick={() => setIsSidebarOpen(false)}
-          className="md:hidden fixed inset-0 bg-black/60 z-20 transition-opacity duration-300"
+          className="md:hidden fixed inset-0 bg-black/40 z-20 transition-opacity duration-300 backdrop-blur-xs"
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed md:static inset-y-0 left-0 w-72 bg-neutral-950 border-r border-neutral-800 flex flex-col transition-transform duration-300 z-30 
+        className={`fixed md:static inset-y-0 left-0 w-72 bg-[#FAFAF8] border-r border-[#EAEAEA] flex flex-col transition-transform duration-300 z-30 
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
-        <div className="p-4 flex items-center justify-between border-b border-neutral-800/40">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-md">
-              <span className="font-black text-sm text-white">AE</span>
+        <div className="p-4 flex items-center justify-between border-b border-[#EAEAEA]">
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#FF6B2C] flex items-center justify-center shadow-sm">
+              <span className="font-black text-xs text-white">AE</span>
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-              Aether
+            <h1 className="text-lg font-black tracking-tight text-[#171717]">
+              Aether AI
             </h1>
-          </div>
+          </Link>
           <button
             onClick={startNewChat}
-            className="p-1.5 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 rounded-lg text-neutral-300 hover:text-white transition-all cursor-pointer shadow-sm"
+            className="p-2 bg-[#FFF5F0] hover:bg-[#FF6B2C] border border-orange-200 hover:border-[#FF6B2C] rounded-xl text-[#FF6B2C] hover:text-white transition-all cursor-pointer shadow-xs"
             title="Start New Chat"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,30 +459,29 @@ const Dashboard = () => {
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-thin">
           {sortedChats.length === 0 ? (
-            <div className="text-center py-10 px-4 text-neutral-600 text-xs select-none">
-              No conversations yet. Start a new chat above!
+            <div className="text-center py-10 px-4 text-neutral-400 text-xs select-none">
+              No conversations yet. Click New Chat above!
             </div>
           ) : (
             sortedChats.map((chatItem) => (
               <div
                 key={chatItem.id}
                 onClick={() => openChat(chatItem.id)}
-                className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs transition-all duration-150 border ${
-                  currentChatId === chatItem.id
-                    ? "bg-neutral-800/75 text-white font-medium border-neutral-700/40"
-                    : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200 border-transparent"
-                }`}
+                className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl cursor-pointer text-xs transition-all duration-150 border ${currentChatId === chatItem.id
+                    ? "bg-[#FFF4EE] text-[#FF6B2C] font-bold border-orange-200 shadow-2xs"
+                    : "text-neutral-700 hover:bg-[#F2F1EE] border-transparent"
+                  }`}
               >
                 <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                  <svg className={`w-4 h-4 flex-shrink-0 ${currentChatId === chatItem.id ? "text-blue-500" : "text-neutral-500 group-hover:text-neutral-400"}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <svg className={`w-4 h-4 flex-shrink-0 ${currentChatId === chatItem.id ? "text-[#FF6B2C]" : "text-neutral-400 group-hover:text-neutral-600"}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
                   </svg>
                   <span className="truncate pr-1 leading-tight">{chatItem.title}</span>
                 </div>
-                
+
                 <button
                   onClick={(e) => handleDelete(e, chatItem.id)}
-                  className="opacity-0 group-hover:opacity-100 hover:bg-neutral-800 text-neutral-500 hover:text-red-400 p-1 rounded transition-all cursor-pointer"
+                  className="opacity-0 group-hover:opacity-100 hover:bg-neutral-200 text-neutral-400 hover:text-red-500 p-1 rounded transition-all cursor-pointer"
                   title="Delete chat"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -436,132 +495,198 @@ const Dashboard = () => {
 
         {/* Pro Preview Banner Pill for Free users */}
         {user?.plan !== "pro" && (
-          <div className="mx-3 my-2 p-3 bg-gradient-to-r from-blue-950/40 via-indigo-950/40 to-neutral-900 rounded-xl border border-blue-500/30 text-xs shadow-inner">
+          <div className="mx-3 my-2 p-3 bg-[#FFF8F5] rounded-2xl border border-orange-200 text-xs shadow-2xs">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1">
+              <span className="text-[10px] font-black uppercase text-[#FF6B2C] tracking-wider flex items-center gap-1">
                 ⚡ Pro Preview
               </span>
-              <span className="text-[10px] font-bold text-neutral-300">
+              <span className="text-[10px] font-bold text-neutral-700">
                 {proPreviewRemaining} messages left
               </span>
             </div>
-            <p className="text-[10px] text-neutral-400 leading-tight mt-0.5">
+            <p className="text-[11px] text-neutral-600 leading-tight mt-0.5">
               Try premium models & tools for 5 total messages before upgrading.
             </p>
           </div>
         )}
 
-        {/* Free Limits Indicator in Sidebar */}
-        {user?.plan !== "pro" && usageStats && registry[selectedModel] && registry[selectedModel].plan === "free" && selectedModel !== "auto" && (
-          <div className="mx-3 my-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800/80 text-xs shadow-inner">
-            <div className="flex justify-between items-center mb-1 text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
-              <span>Daily Limits</span>
-              <button onClick={handleUpgradeTrigger} className="text-blue-400 hover:text-blue-300 font-extrabold focus:outline-none transition-colors">
-                Upgrade
-              </button>
-            </div>
-            {(() => {
-              const conf = registry[selectedModel];
-              const modelUsage = usageStats[selectedModel] || { requests: 0 };
-              const remaining = Math.max(0, conf.dailyRequestLimit - modelUsage.requests);
-              const percent = Math.min(100, Math.ceil((remaining / conf.dailyRequestLimit) * 100));
-              return (
-                <div className="text-neutral-400 mt-1">
-                  <div className="flex justify-between text-[11px] mb-1.5">
-                    <span className="truncate max-w-[120px]">{conf.displayName}</span>
-                    <span className="font-semibold text-neutral-200">{remaining} remaining</span>
-                  </div>
-                  <div className="w-full bg-neutral-950 rounded-full h-1 overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${percent < 20 ? "bg-red-500" : percent < 55 ? "bg-amber-500" : "bg-blue-500"}`}
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* User profile section */}
-        <div className="p-4 border-t border-neutral-800/60 bg-neutral-950/80 flex items-center justify-between gap-2.5">
+        <div className="p-4 border-t border-[#EAEAEA] bg-[#F7F6F3] flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-full bg-blue-750/80 flex items-center justify-center text-white font-semibold text-sm shadow-sm select-none">
+            <div className="w-9 h-9 rounded-full bg-[#FF6B2C] flex items-center justify-center text-white font-bold text-sm shadow-xs select-none">
               {user?.username ? user.username[0].toUpperCase() : (user?.email ? user.email[0].toUpperCase() : "U")}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs font-semibold text-neutral-300 truncate leading-tight">
-                  {user?.username || "Aether User"}
+                <p className="text-xs font-bold text-[#171717] truncate leading-tight">
+                  {user?.username || "Guest User"}
                 </p>
                 {user?.plan === "pro" && (
-                  <span className="text-[8px] font-black tracking-widest bg-blue-600/10 text-blue-400 px-1.5 py-0.25 rounded border border-blue-900/50 uppercase shadow-sm">
-                    Pro
+                  <span className="text-[8px] font-black tracking-widest bg-orange-100 text-[#FF6B2C] px-1.5 py-0.25 rounded border border-orange-200 uppercase">
+                    PRO
                   </span>
                 )}
               </div>
               <p className="text-[10px] text-neutral-500 truncate leading-snug">
-                {user?.email || "coding-assistant@aether.ai"}
+                {user?.email || "guest@aether.ai"}
               </p>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-1">
-            <Link
-              to="/settings"
-              className="text-neutral-500 hover:text-white hover:bg-neutral-900/60 p-1.5 rounded-lg transition-all duration-150 cursor-pointer"
-              title="Billing & Settings"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </Link>
-            
-            <button
-              onClick={handleLogoutClick}
-              className="text-neutral-500 hover:text-red-400 hover:bg-neutral-900/60 p-1.5 rounded-lg transition-all duration-150 cursor-pointer"
-              title="Log Out"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l3 3m0 0l-3 3m3-3H8.25" />
-              </svg>
-            </button>
+          </div>          <div className="flex items-center gap-1">
+            {user ? (
+              <>
+                <Link
+                  to="/settings"
+                  className="text-neutral-500 hover:text-[#171717] hover:bg-neutral-200 p-1.5 rounded-lg transition-all cursor-pointer"
+                  title="Billing & Settings"
+                >
+                  <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </Link>
+
+                <button
+                  onClick={handleLogoutClick}
+                  className="text-neutral-500 hover:text-red-600 hover:bg-neutral-200 p-1.5 rounded-lg transition-all cursor-pointer"
+                  title="Log Out"
+                >
+                  <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l3 3m0 0l-3 3m3-3H8.25" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="px-3 py-1.5 rounded-xl bg-[#FF6B2C] hover:bg-[#E55A1F] text-white text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              >
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
 
       </aside>
 
       {/* Main Chat Panel */}
-      <main className="flex-1 flex flex-col relative h-full overflow-hidden pt-14 md:pt-0">
-        
+      <main className="flex-1 flex flex-col relative h-full overflow-hidden pt-14 md:pt-0 bg-white">
+
+        {/* Top Model Header */}
+        <div className="px-6 py-3 border-b border-[#EAEAEA] flex items-center justify-between bg-white z-10">
+          <div className="relative inline-block text-left">
+            <button
+              type="button"
+              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-[#FAF9F6] hover:bg-[#F2F1EE] border border-[#EAEAEA] text-xs rounded-xl font-bold transition-all cursor-pointer text-[#171717] shadow-2xs"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#FF6B2C] animate-pulse"></span>
+              <span>{activeModelMeta?.displayName}</span>
+              {activeModelMeta?.id === "auto" && (
+                <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1.5 py-0.5 rounded uppercase border border-orange-200">
+                  Recommended
+                </span>
+              )}
+              <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isModelDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {isModelDropdownOpen && (
+              <div className="origin-top-left absolute left-0 mt-2 w-72 rounded-2xl shadow-xl bg-white border border-[#EAEAEA] ring-1 ring-black/5 divide-y divide-[#EAEAEA] z-50 animate-fade-in overflow-hidden">
+                {/* Auto Model */}
+                <div className="p-1.5">
+                  <div
+                    onClick={() => handleModelChange(autoModel.id)}
+                    className={`flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors ${selectedModel === autoModel.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-[#171717]">{autoModel.displayName}</span>
+                        <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1 rounded uppercase">Auto</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 mt-0.5">{autoModel.desc}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Free Models */}
+                <div className="p-1.5">
+                  <span className="px-2.5 py-1 block text-[9px] font-extrabold text-neutral-400 uppercase tracking-wider">Free Models</span>
+                  {freeModels.map((m) => (
+                    <div
+                      key={m.id}
+                      onClick={() => handleModelChange(m.id)}
+                      className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-neutral-300 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <span className="text-xs font-semibold text-[#171717]">{m.displayName}</span>
+                        <p className="text-[10px] text-neutral-500">{m.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pro Models */}
+                <div className="p-1.5">
+                  <span className="px-2.5 py-1 block text-[9px] font-extrabold text-[#FF6B2C] uppercase tracking-wider">Pro Models</span>
+                  {proModels.map((m) => (
+                    <div
+                      key={m.id}
+                      onClick={() => handleModelChange(m.id)}
+                      className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-[#171717]">{m.displayName}</span>
+                          <span className="text-[8px] bg-orange-500 text-white font-black px-1 rounded uppercase">PRO</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-500">{m.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Link to="/pricing" className="text-xs font-bold text-[#FF6B2C] hover:text-[#E55A1F] transition-colors flex items-center gap-1">
+            <span>Upgrade Plan</span>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </Link>
+        </div>
+
         {/* Messages list container */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 scrollbar-thin">
-          
+
           {/* Fallback Notice Banner */}
           {fallbackNotice && (
-            <div className="max-w-3xl mx-auto mb-4 p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center justify-between">
+            <div className="max-w-3xl mx-auto mb-4 p-3.5 bg-orange-50 border border-orange-200 rounded-2xl text-[#C2410C] text-xs flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-[#FF6B2C] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>{fallbackNotice}</span>
               </div>
-              <button onClick={() => setFallbackNotice(null)} className="text-amber-400 hover:text-white p-1">✕</button>
+              <button onClick={() => setFallbackNotice(null)} className="text-[#FF6B2C] hover:text-black p-1">✕</button>
             </div>
           )}
 
           {messages.length === 0 ? (
-            // Clean empty state with logo & cards
+            // Clean white + orange empty state
             <div className="h-full flex flex-col justify-center items-center max-w-3xl mx-auto w-full text-center py-10">
-              <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-3xl font-black mb-6 shadow-lg shadow-blue-900/30 animate-pulse">
+              <div className="w-14 h-14 rounded-2xl bg-[#FF6B2C] flex items-center justify-center text-white text-2xl font-black mb-6 shadow-md shadow-orange-500/20">
                 AE
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 select-none tracking-tight">
-                I'm Aether, your coding assistant
+              <h2 className="text-2xl md:text-3xl font-black text-[#171717] mb-2 select-none tracking-tight">
+                {getGreeting()}, {user?.username || "Guest"}
               </h2>
-              <p className="text-sm md:text-base text-neutral-400 mb-8 max-w-lg select-none leading-relaxed">
-                Ask me to write scripts, debug compile-time errors, review logic, or explain difficult programming concepts.
+              <p className="text-sm md:text-base text-[#6B6B6B] mb-8 max-w-lg select-none leading-relaxed font-medium">
+                How can Aether AI help you code, research, or create today?
               </p>
 
               {/* Suggestions Cards */}
@@ -570,12 +695,13 @@ const Dashboard = () => {
                   <div
                     key={index}
                     onClick={() => handleSuggestionClick(item.prompt)}
-                    className="p-4 bg-neutral-850 hover:bg-neutral-800/80 border border-neutral-800 rounded-xl cursor-pointer transition-all duration-200 group shadow-sm hover:shadow hover:border-neutral-700"
+                    className="p-4.5 bg-white hover:bg-[#FAF9F6] border border-[#EAEAEA] hover:border-orange-300 rounded-2xl cursor-pointer transition-all duration-200 group shadow-2xs hover:shadow-md"
                   >
-                    <h3 className="text-xs font-bold text-blue-400 mb-1 group-hover:text-blue-300 transition-colors uppercase tracking-wider">
+                    <h3 className="text-xs font-bold text-[#FF6B2C] mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C]" />
                       {item.title}
                     </h3>
-                    <p className="text-xs text-neutral-400 leading-normal">
+                    <p className="text-xs text-[#6B6B6B] leading-normal font-medium">
                       {item.description}
                     </p>
                   </div>
@@ -584,53 +710,53 @@ const Dashboard = () => {
             </div>
           ) : (
             // Messages mapping
-            <div className="max-w-3xl mx-auto w-full flex flex-col gap-6 pb-32 pt-4">
-              
+            <div className="max-w-3xl mx-auto w-full flex flex-col gap-6 pb-32 pt-2">
+
               {messages.map((msg, index) => {
                 const isUser = msg.role === "user";
                 return (
-                  <div 
-                    key={index} 
+                  <div
+                    key={index}
                     className={`flex w-full animate-fade-in ${isUser ? "justify-end" : "justify-start"}`}
                   >
                     {isUser ? (
                       /* User message bubble */
-                      <div className="bg-neutral-850 hover:bg-neutral-800 text-neutral-200 px-5 py-3 rounded-2xl max-w-[80%] md:max-w-[70%] shadow-sm text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap select-text border border-neutral-800/60 transition-colors duration-150">
+                      <div className="bg-[#F7F6F3] text-[#171717] px-5 py-3.5 rounded-2xl max-w-[85%] md:max-w-[75%] shadow-2xs text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap select-text border border-[#EAEAEA] font-medium">
                         {msg.content}
                       </div>
                     ) : (
                       /* AI Response layout */
                       <div className="w-full flex items-start gap-4">
-                        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 font-bold text-xs select-none shadow-md text-white mt-1">
+                        <div className="w-8 h-8 rounded-xl bg-[#FF6B2C] flex items-center justify-center flex-shrink-0 font-black text-xs select-none shadow-xs text-white mt-1">
                           AE
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-neutral-500 select-none uppercase tracking-widest mb-1.5">
-                            Aether
+                          <p className="text-[10px] font-bold text-neutral-400 select-none uppercase tracking-widest mb-1.5">
+                            Aether AI
                           </p>
-                          <div className="prose prose-invert max-w-none">
+                          <div className="prose max-w-none text-[#171717]">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               components={{
-                                h1: ({ children }) => <h1 className="text-xl font-bold mt-5 mb-2 text-white">{children}</h1>,
-                                h2: ({ children }) => <h2 className="text-lg font-bold mt-4.5 mb-2 text-neutral-100">{children}</h2>,
-                                h3: ({ children }) => <h3 className="text-base font-semibold mt-3.5 mb-1.5 text-neutral-200">{children}</h3>,
-                                p: ({ children }) => <p className="leading-relaxed mb-3 text-neutral-300 text-[14px] md:text-[15px]">{children}</p>,
-                                ul: ({ children }) => <ul className="list-disc pl-5 mb-3.5 space-y-1 text-neutral-300 text-[14px]">{children}</ul>,
-                                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3.5 space-y-1 text-neutral-300 text-[14px]">{children}</ol>,
+                                h1: ({ children }) => <h1 className="text-xl font-bold mt-5 mb-2 text-[#171717]">{children}</h1>,
+                                h2: ({ children }) => <h2 className="text-lg font-bold mt-4.5 mb-2 text-[#171717]">{children}</h2>,
+                                h3: ({ children }) => <h3 className="text-base font-semibold mt-3.5 mb-1.5 text-[#171717]">{children}</h3>,
+                                p: ({ children }) => <p className="leading-relaxed mb-3 text-[#171717] text-[14px] md:text-[15px]">{children}</p>,
+                                ul: ({ children }) => <ul className="list-disc pl-5 mb-3.5 space-y-1 text-[#171717] text-[14px]">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3.5 space-y-1 text-[#171717] text-[14px]">{children}</ol>,
                                 li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{children}</a>,
+                                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#FF6B2C] font-semibold hover:underline">{children}</a>,
                                 table: ({ children }) => (
-                                  <div className="overflow-x-auto my-3 border border-neutral-800 rounded-lg">
-                                    <table className="min-w-full divide-y divide-neutral-800 text-xs">{children}</table>
+                                  <div className="overflow-x-auto my-3 border border-[#EAEAEA] rounded-xl">
+                                    <table className="min-w-full divide-y divide-[#EAEAEA] text-xs">{children}</table>
                                   </div>
                                 ),
-                                thead: ({ children }) => <thead className="bg-neutral-850">{children}</thead>,
-                                tbody: ({ children }) => <tbody className="divide-y divide-neutral-800 bg-neutral-900/10">{children}</tbody>,
+                                thead: ({ children }) => <thead className="bg-[#FAF9F6]">{children}</thead>,
+                                tbody: ({ children }) => <tbody className="divide-y divide-[#EAEAEA] bg-white">{children}</tbody>,
                                 tr: ({ children }) => <tr>{children}</tr>,
-                                th: ({ children }) => <th className="px-3 py-2 text-left font-semibold text-neutral-300">{children}</th>,
-                                td: ({ children }) => <td className="px-3 py-2 text-neutral-400">{children}</td>,
-                                blockquote: ({ children }) => <blockquote className="border-l-4 border-neutral-700 pl-3 py-0.5 my-3.5 italic text-neutral-400">{children}</blockquote>,
+                                th: ({ children }) => <th className="px-3 py-2 text-left font-bold text-[#171717]">{children}</th>,
+                                td: ({ children }) => <td className="px-3 py-2 text-neutral-600">{children}</td>,
+                                blockquote: ({ children }) => <blockquote className="border-l-4 border-[#FF6B2C] pl-3 py-0.5 my-3.5 italic text-neutral-600 bg-orange-50/50 rounded-r-lg">{children}</blockquote>,
                                 code({ node, inline, className, children, ...props }) {
                                   const match = /language-(\w+)/.exec(className || "");
                                   const lang = match ? match[1] : "";
@@ -638,7 +764,7 @@ const Dashboard = () => {
                                   return !inline && match ? (
                                     <CodeBlock language={lang} value={codeVal} />
                                   ) : (
-                                    <code className="px-1.5 py-0.5 rounded bg-neutral-800 text-rose-400 text-xs font-semibold font-mono" {...props}>
+                                    <code className="px-1.5 py-0.5 rounded bg-orange-50 text-[#FF6B2C] text-xs font-bold font-mono border border-orange-200/60" {...props}>
                                       {children}
                                     </code>
                                   );
@@ -666,244 +792,77 @@ const Dashboard = () => {
 
         </div>
 
-        {/* Fixed Input Form at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-neutral-900 via-neutral-900/90 to-transparent pt-10 pb-6 px-4 z-10">
+        {/* Floating Input Box at Bottom */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-transparent pt-8 pb-6 px-4 z-10">
           <form
             onSubmit={sendMessage}
             className="max-w-3xl mx-auto w-full relative"
           >
-            {/* Model Selector Dropdown */}
-            <div className="relative mb-3 flex items-center justify-between">
-              <div className="relative inline-block text-left">
-                <button
-                  type="button"
-                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                  className="flex items-center gap-2 px-3.5 py-1.5 bg-neutral-850 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-xs rounded-xl font-medium transition-all duration-200 cursor-pointer shadow-sm text-neutral-300 focus:outline-none"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="font-semibold">{activeModelMeta?.displayName}</span>
-                  {activeModelMeta?.id === "auto" && (
-                    <span className="text-[8px] bg-emerald-500/20 text-emerald-300 font-extrabold px-1.5 py-0.5 rounded uppercase border border-emerald-500/40">
-                      Recommended
-                    </span>
-                  )}
-                  <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isModelDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isModelDropdownOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40 cursor-default" 
-                      onClick={() => setIsModelDropdownOpen(false)}
-                    />
-                    <div className="absolute bottom-full left-0 mb-2 w-84 bg-neutral-950/95 backdrop-blur-xl border border-neutral-800 rounded-2xl shadow-2xl p-2.5 z-50 animate-fade-in max-h-[380px] overflow-y-auto divide-y divide-neutral-800/40">
-                      
-                      {/* Aether Auto Recommended Section */}
-                      {autoModel && (
-                        <div className="pb-2">
-                          <div className="px-2 py-1 text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center justify-between">
-                            <span>Smart Auto Routing</span>
-                            <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase">Recommended</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleModelChange("auto")}
-                            className={`w-full text-left flex items-start gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-150 cursor-pointer mt-1
-                              ${selectedModel === "auto" 
-                                ? "bg-emerald-600/15 text-white border-l-2 border-emerald-500" 
-                                : "bg-neutral-900/50 hover:bg-neutral-850 text-neutral-300"}`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-emerald-300">Aether Auto</span>
-                                <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase bg-neutral-800 text-neutral-400">
-                                  AI Router
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-neutral-400 mt-0.5 leading-snug">{autoModel.desc}</p>
-                            </div>
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="py-2">
-                        <div className="px-2 py-1 text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
-                          Free Models
-                        </div>
-                        <div className="mt-1 space-y-0.5">
-                          {freeModels.map((model) => (
-                            <button
-                              key={model.id}
-                              type="button"
-                              onClick={() => handleModelChange(model.id)}
-                              className={`w-full text-left flex items-start gap-2 px-2 py-1.5 rounded-xl transition-all duration-150 cursor-pointer
-                                ${selectedModel === model.id 
-                                  ? "bg-blue-600/10 text-white border-l-2 border-blue-500" 
-                                  : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`text-xs font-semibold ${selectedModel === model.id ? "text-blue-400" : "text-neutral-200"}`}>
-                                    {model.displayName}
-                                  </span>
-                                  <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase border border-neutral-800/80 text-neutral-550">
-                                    {model.provider}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-neutral-500 mt-0.5 truncate">{model.desc}</p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="pt-2">
-                        <div className="px-2 py-1 text-[9px] font-bold text-blue-400 uppercase tracking-widest flex items-center justify-between">
-                          <span className="flex items-center gap-1">Pro Models</span>
-                          {user?.plan !== "pro" && proPreviewRemaining > 0 && (
-                            <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold">
-                              ⚡ Preview ({proPreviewRemaining} left)
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1 space-y-0.5">
-                          {proModels.map((model) => {
-                            const hasProAccess = user?.plan === "pro" || proPreviewRemaining > 0;
-                            return (
-                              <button
-                                key={model.id}
-                                type="button"
-                                onClick={() => handleModelChange(model.id)}
-                                className={`w-full text-left flex items-start justify-between gap-2 px-2 py-1.5 rounded-xl transition-all duration-150 cursor-pointer
-                                  ${selectedModel === model.id 
-                                    ? "bg-blue-600/10 text-white border-l-2 border-blue-500" 
-                                    : "text-neutral-450 hover:bg-neutral-900/60 hover:text-neutral-200"}`}
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={`text-xs font-semibold ${selectedModel === model.id ? "text-blue-400" : "text-neutral-200"}`}>
-                                      {model.displayName}
-                                    </span>
-                                    <span className="text-[7.5px] px-1 py-0.25 rounded font-extrabold uppercase border border-neutral-800/80 text-neutral-550">
-                                      {model.provider}
-                                    </span>
-                                  </div>
-                                  <p className="text-[10px] text-neutral-500 mt-0.5 truncate">{model.desc}</p>
-                                </div>
-                                {!hasProAccess && (
-                                  <svg className="w-3.5 h-3.5 text-neutral-600 self-center" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                  </svg>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="relative flex items-center">
+            <div className="relative flex items-center bg-white border border-[#EAEAEA] rounded-2xl p-2 shadow-lg focus-within:border-[#FF6B2C] focus-within:ring-2 focus-within:ring-[#FF6B2C]/20 transition-all duration-200">
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask Aether to write or debug code..."
-                disabled={isLoading}
-                className="w-full bg-neutral-800 border border-neutral-750 focus:border-neutral-600 rounded-2xl pl-5 pr-14 py-4 outline-none text-white text-sm shadow-xl transition-all placeholder-neutral-500 disabled:opacity-50"
+                placeholder="Ask Aether anything..."
+                className="w-full pl-4 pr-12 py-2 text-sm text-[#171717] placeholder-neutral-400 bg-transparent outline-none font-medium"
               />
+
               <button
                 type="submit"
                 disabled={!inputValue.trim() || isLoading}
-                className="absolute right-3.5 p-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 text-white disabled:text-neutral-500 disabled:cursor-not-allowed transition-all cursor-pointer shadow"
+                className="w-9 h-9 rounded-full bg-[#FF6B2C] hover:bg-[#E55A1F] text-white flex items-center justify-center cursor-pointer shadow-xs disabled:opacity-40 disabled:hover:bg-[#FF6B2C] disabled:cursor-not-allowed transition-all duration-150 flex-shrink-0"
                 title="Send message"
               >
-                <svg className="w-4 h-4 transform rotate-90" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75" />
                 </svg>
               </button>
             </div>
-            <p className="text-[10px] text-neutral-600 text-center mt-2.5 select-none">
-              Aether may provide output that requires compilation checking. Review code carefully.
-            </p>
           </form>
+
+          <p className="text-[10px] text-center text-neutral-400 mt-2 font-medium">
+            Aether AI can make mistakes. Verify important information.
+          </p>
         </div>
 
       </main>
 
-      {/* Upgrade to Pro Modal */}
+      {/* Guest Prompt Limit Modal */}
+      {isGuestModalOpen && (
+        <GuestLimitModal isOpen={isGuestModalOpen} onClose={() => setIsGuestModalOpen(false)} />
+      )}
+
+      {/* Upgrade Pro Modal */}
       {isUpgradeModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-md">
-          <div className="relative max-w-md w-full rounded-3xl border border-blue-500/30 bg-neutral-950 p-6 md:p-8 shadow-2xl flex flex-col gap-5 text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full border border-[#EAEAEA] shadow-2xl relative">
             <button
               onClick={() => setIsUpgradeModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-900 transition-colors focus:outline-none cursor-pointer"
+              className="absolute top-4 right-4 text-neutral-400 hover:text-[#171717] p-1 text-sm font-bold"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              ✕
             </button>
-
-            {upgradeError && (
-              <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2.5">
-                <svg className="w-4 h-4 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <span>{upgradeError}</span>
-              </div>
-            )}
-
-            <div className="text-center">
-              <div className="mx-auto w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white text-lg font-black mb-3 shadow-lg shadow-blue-900/35">
-                AE
-              </div>
-              <h2 className="text-xl md:text-2xl font-extrabold text-white">Unlock Aether Pro</h2>
-              <p className="text-xs text-neutral-400 mt-1">Get advanced programming assistance immediately</p>
+            <div className="w-12 h-12 rounded-2xl bg-[#FFF5F0] border border-orange-200 text-[#FF6B2C] flex items-center justify-center font-black text-lg mb-4">
+              PRO
             </div>
-
-            <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 text-center">
-              <span className="text-2xl font-black text-white">{FRONTEND_PRICING_CONFIG.introductoryPrice}</span>
-              <span className="text-xs text-neutral-400 font-semibold"> for your {FRONTEND_PRICING_CONFIG.introductoryPeriodText}</span>
-              <p className="text-[10px] text-neutral-500 font-medium mt-1">{FRONTEND_PRICING_CONFIG.offerHeadline}</p>
+            <h3 className="text-xl font-black text-[#171717]">Upgrade to Aether Pro</h3>
+            <p className="mt-2 text-xs text-neutral-600 leading-relaxed font-medium">
+              {upgradeError || "You have used your free preview allocation. Upgrade to Pro for unlimited access to GPT-4o, Mistral Large, and advance routing."}
+            </p>
+            <div className="mt-6 flex flex-col gap-2.5">
+              <button
+                onClick={handleUpgrade}
+                className="w-full py-3 rounded-xl bg-[#FF6B2C] hover:bg-[#E55A1F] text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+              >
+                View Pro Plans ({FRONTEND_PRICING_CONFIG.introductoryPrice} intro)
+              </button>
+              <button
+                onClick={() => setIsUpgradeModalOpen(false)}
+                className="w-full py-2.5 rounded-xl border border-[#EAEAEA] bg-white hover:bg-neutral-50 text-neutral-600 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
             </div>
-
-            <div className="space-y-3">
-              <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Main Benefits Included:</h3>
-              <ul className="space-y-2.5">
-                {FRONTEND_PRICING_CONFIG.features.map((feat, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5 text-xs text-neutral-300">
-                    <svg className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    <span>{feat}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <button
-              onClick={handleUpgrade}
-              disabled={upgradeLoading}
-              className="w-full mt-2 text-center py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-xs font-extrabold tracking-wide shadow-md transition-all transform active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              {upgradeLoading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Connecting...</span>
-                </>
-              ) : (
-                <span>Upgrade to Pro Now</span>
-              )}
-            </button>
           </div>
         </div>
       )}

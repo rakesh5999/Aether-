@@ -24,7 +24,8 @@ async function sendViaGmailApi({ to, subject, html, text }) {
 
   const boundary = "====_Aether_AI_" + Date.now().toString(16);
   const dateStr = new Date().toUTCString();
-  const plainText = text || "Please verify your email by clicking the link in the email.";
+  const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 9)}@aether.ai>`;
+  const plainText = text || "Please verify your email address to activate your Aether AI account.";
 
   const rawMessage = [
     `From: "Aether AI" <${fromEmail}>`,
@@ -32,6 +33,9 @@ async function sendViaGmailApi({ to, subject, html, text }) {
     `To: ${to}`,
     `Subject: ${subject}`,
     `Date: ${dateStr}`,
+    `Message-ID: ${messageId}`,
+    `X-Mailer: Aether-AI-Auth-Service`,
+    `Auto-Submitted: auto-generated`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ``,
@@ -74,9 +78,11 @@ async function sendViaGmailApi({ to, subject, html, text }) {
 }
 
 export async function sendEmail({ to, subject, html, text = "" }) {
+  const plainFallback = text || "Please verify your email address to activate your Aether AI account.";
+
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_REFRESH_TOKEN) {
     console.log("Sending email via Gmail HTTPS API (Port 443)...");
-    const details = await sendViaGmailApi({ to, subject, html, text });
+    const details = await sendViaGmailApi({ to, subject, html, text: plainFallback });
     console.log("Email sent successfully via Gmail API:", details.id);
     return "email sent successfully to " + to;
   }
@@ -90,12 +96,16 @@ export async function sendEmail({ to, subject, html, text = "" }) {
   });
 
   const details = await transporter.sendMail({
-    from: process.env.GOOGLE_USER,
+    from: `"Aether AI" <${process.env.GOOGLE_USER}>`,
+    replyTo: process.env.GOOGLE_USER,
     to,
     subject,
-    text,
+    text: plainFallback,
     html,
+    headers: {
+      "X-Mailer": "Aether-AI-Auth-Service",
+      "Auto-Submitted": "auto-generated"
+    }
   });
   return "email sent successfully to " + to;
 }
-

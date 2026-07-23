@@ -47,9 +47,43 @@ export async function createChat(req, res) {
 }
 
 export async function sendMessage(req, res) {
-  const { message, chat: chatId, model } = req.body;
-  const userId = req.user.id;
+  const { message, chat: chatId, model, history } = req.body;
+  const userId = req.user?.id;
   const targetModel = model || "auto";
+
+  // Guest Chat logic for unauthenticated users
+  if (!userId) {
+    try {
+      const modelConfig = modelsConfig[targetModel] || modelsConfig["auto"];
+      const allowedTools = modelConfig.allowedTools || ["all"];
+
+      let formattedMessages = Array.isArray(history) && history.length > 0 ? history : [];
+      formattedMessages.push({ role: "user", content: message });
+
+      let responseObj;
+      await requestContext.run({ userId: "guest", modelId: targetModel, allowedTools }, async () => {
+        responseObj = await generateResponse(formattedMessages, targetModel, "free", 0);
+      });
+
+      return res.status(201).json({
+        title: "Guest Chat",
+        chat: null,
+        aiMessage: {
+          role: "ai",
+          content: responseObj.text,
+          createdAt: new Date().toISOString()
+        },
+        requestedModel: responseObj.requestedModel,
+        actualModel: responseObj.actualModel,
+        fallbackUsed: responseObj.fallbackUsed,
+        fallbackReason: responseObj.fallbackReason,
+        routingReason: responseObj.routingReason
+      });
+    } catch (guestErr) {
+      console.error("Guest sendMessage error:", guestErr);
+      return res.status(500).json({ message: "Failed to generate response for guest user", error: guestErr.message });
+    }
+  }
 
   try {
     // 1. Verify model access permissions and daily usage limits

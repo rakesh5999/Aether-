@@ -25,7 +25,27 @@ export const registerValidationRules = [
     .notEmpty()
     .withMessage("Email is required")
     .isEmail()
-    .withMessage("Please provide a valid email"),
+    .withMessage("Please provide a valid email")
+    .custom((value) => {
+      const normalized = (value || "").toLowerCase().trim();
+      if (!normalized.endsWith("@gmail.com")) {
+        throw new Error("Please use a valid Gmail address to create your Aether AI account.");
+      }
+      const localPart = normalized.slice(0, -10);
+      if (localPart.length < 6 || localPart.length > 30) {
+        throw new Error("Gmail username must be between 6 and 30 characters long.");
+      }
+      if (!/^[a-z0-9.]+$/.test(localPart)) {
+        throw new Error("Gmail username can only contain letters, numbers, and periods.");
+      }
+      if (localPart.startsWith(".") || localPart.endsWith(".")) {
+        throw new Error("Gmail username cannot start or end with a period.");
+      }
+      if (localPart.includes("..")) {
+        throw new Error("Gmail username cannot contain consecutive periods.");
+      }
+      return true;
+    }),
 
   body("password")
     .notEmpty()

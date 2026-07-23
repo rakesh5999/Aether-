@@ -1,25 +1,44 @@
 @import "tailwindcss";
 
-.messages::-webkit-scrollbar{
+.messages::-webkit-scrollbar {
   display: none;
 }
 
 /* Cybernetic grid and glowing effects */
 .cyber-grid {
-  background-image: 
+  background-image:
     linear-gradient(rgba(29, 78, 216, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(29, 78, 216, 0.04) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
+.orange-grid {
+  background-image:
+    linear-gradient(rgba(255, 107, 44, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 107, 44, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
 @keyframes float {
-  0%, 100% { transform: translateY(0px) scale(1); }
-  50% { transform: translateY(-12px) scale(1.05); }
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+
+  50% {
+    transform: translateY(-12px) scale(1.05);
+  }
 }
 
 @keyframes float-delayed {
-  0%, 100% { transform: translateY(0px) scale(1.05); }
-  50% { transform: translateY(12px) scale(1); }
+  0%,
+  100% {
+    transform: translateY(0px) scale(1.05);
+  }
+
+  50% {
+    transform: translateY(12px) scale(1);
+  }
 }
 
 .animate-float-slow {
@@ -34,4 +53,26 @@
   background: rgba(8, 8, 12, 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+}
+
+.orange-btn {
+  background-color: #FF6B2C;
+  color: #FFFFFF;
+  transition: all 0.2s ease-in-out;
+}
+
+.orange-btn:hover {
+  background-color: #E55A1F;
+}
+
+.orange-glow-btn {
+  background: linear-gradient(135deg, #FF6B2C 0%, #FF854D 100%);
+  color: #FFFFFF;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 4px 14px rgba(255, 107, 44, 0.25);
+}
+
+.orange-glow-btn:hover {
+  background: linear-gradient(135deg, #E55A1F 0%, #FF6B2C 100%);
+  box-shadow: 0 6px 20px rgba(255, 107, 44, 0.35);
 }

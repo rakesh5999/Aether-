@@ -38,7 +38,8 @@ export const useChat = () => {
           title
         }));
       }
-        } catch (error) {
+      return data;
+    } catch (error) {
       dispatch(setError(error.message));
       throw error;
     } finally {
@@ -80,7 +81,9 @@ export const useChat = () => {
         return acc
       }, {})))
     } catch (error) {
-      dispatch(setError(error.message))
+      if (error.response?.status !== 401) {
+        dispatch(setError(error.message))
+      }
     } finally {
       dispatch(setLoading(false))
     }

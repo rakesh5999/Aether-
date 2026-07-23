@@ -38,6 +38,18 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
+    verificationToken: {
+        type: String,
+        default: null,
+    },
+    verificationTokenExpires: {
+        type: Date,
+        default: null,
+    },
+    lastVerificationSentAt: {
+        type: Date,
+        default: null,
+    },
     plan: {
         type: String,
         enum: ["free", "pro"],

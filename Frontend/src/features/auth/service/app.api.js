@@ -26,3 +26,15 @@ export async function logout() {
   const response = await api.post("/auth/logout");
   return response.data;
 }
+
+export async function resendVerificationEmail(email) {
+  const response = await api.post("/auth/resend-verification", { email });
+  return response.data;
+}
+
+export async function verifyEmailToken(token) {
+  const response = await api.get(`/auth/verify-email?token=${token}&format=json`, {
+    headers: { Accept: "application/json" }
+  });
+  return response.data;
+}

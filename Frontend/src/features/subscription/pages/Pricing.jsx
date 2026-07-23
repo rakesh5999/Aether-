@@ -121,7 +121,7 @@ const Pricing = () => {
     <div className="relative min-h-screen w-screen bg-black px-4 py-12 text-neutral-100 flex flex-col items-center justify-center font-sans overflow-x-hidden select-none">
       {/* Cybernetic ambient grid and background highlights */}
       <div className="absolute inset-0 cyber-grid pointer-events-none z-0" />
-      
+
       {/* Floating orbs */}
       <div className="absolute top-10 left-10 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none animate-float-slow z-0" />
       <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none animate-float-delayed z-0" />
@@ -154,7 +154,7 @@ const Pricing = () => {
 
         {/* Pricing Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch text-left max-w-3xl mx-auto">
-          
+
           {/* Free Tier Card */}
           <div className="relative rounded-3xl border border-neutral-800 bg-neutral-900/40 p-6 flex flex-col justify-between shadow-lg backdrop-blur-xl">
             <div>
@@ -168,7 +168,7 @@ const Pricing = () => {
                 <span className="text-3xl font-extrabold text-white">$0</span>
                 <span className="text-xs text-neutral-500 font-medium"> / forever</span>
               </div>
-              
+
               <ul className="space-y-3.5 mb-8">
                 <li className="flex items-start gap-2.5 text-xs text-neutral-300">
                   <svg className="w-4 h-4 text-neutral-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
@@ -225,7 +225,7 @@ const Pricing = () => {
                 <span className="text-xs text-neutral-400 font-semibold"> ($1) for your {FRONTEND_PRICING_CONFIG.introductoryPeriodText}</span>
                 <p className="text-[11px] text-neutral-500 font-semibold mt-1">Then ₹249 ($2.99)/month automatically</p>
               </div>
-              
+
               <ul className="space-y-3 mb-6">
                 {FRONTEND_PRICING_CONFIG.features.map((feat, idx) => (
                   <li key={idx} className="flex items-start gap-2.5 text-xs text-neutral-200">

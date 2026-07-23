@@ -45,6 +45,12 @@ const chatSlice=createSlice({
     setChats:(state,action)=>{
       state.chats=action.payload
     },
+    clearChats:(state)=>{
+      state.chats={}
+      state.currentChatId=null
+      state.isLoading=false
+      state.error=null
+    },
     setCurrentChatId:(state,action)=>{
       state.currentChatId=action.payload
     },
@@ -58,5 +64,5 @@ const chatSlice=createSlice({
 })
 
 
-export const {setChats,setCurrentChatId,setLoading,setError,setMessages,createNewChat,addNewMessages,addMessages,updateChatTitle} = chatSlice.actions
+export const {setChats,clearChats,setCurrentChatId,setLoading,setError,setMessages,createNewChat,addNewMessages,addMessages,updateChatTitle} = chatSlice.actions
 export default chatSlice.reducer
