@@ -39,9 +39,9 @@ export const PRICING_CONFIG = {
   }
 };
 
-/**
- * Calculates estimated API cost for a request given input and output token counts.
- */
+
+ //Calculates estimated API cost for a request given input and output token counts.
+ 
 export function calculateEstimatedCost(modelId, inputTokens = 0, outputTokens = 0) {
   const rate = PRICING_CONFIG.tokenRates[modelId] || { input: 0.0002, output: 0.0004 };
   const inputCost = (inputTokens / 1000) * rate.input;

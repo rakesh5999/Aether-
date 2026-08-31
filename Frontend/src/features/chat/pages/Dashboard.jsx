@@ -8,6 +8,7 @@ import { useAuth } from "../../auth/hook/useAuth";
 import { getUsageStats, getModelsRegistry, createCheckoutSession } from "../../subscription/service/subscription.api";
 import { FRONTEND_PRICING_CONFIG } from "../../../config/pricing.config";
 import GuestLimitModal from "../components/GuestLimitModal";
+import { getGuestPromptStatus, recordGuestPrompt } from "../utils/guestLimit";
 import { createNewChat, setCurrentChatId, clearChats } from "../chat.slice";
 
 // Custom CodeBlock Component with Language badge and Copy button
@@ -171,6 +172,7 @@ const Dashboard = () => {
   const [fallbackNotice, setFallbackNotice] = useState(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
+  const [guestStatus, setGuestStatus] = useState(() => getGuestPromptStatus());
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [upgradeError, setUpgradeError] = useState("");
 
@@ -197,6 +199,7 @@ const Dashboard = () => {
       dispatch(clearChats());
       dispatch(createNewChat({ chatId: "guest-chat", title: "Guest Chat" }));
       dispatch(setCurrentChatId("guest-chat"));
+      setGuestStatus(getGuestPromptStatus());
     }
     fetchConfig();
   }, [user]);
@@ -253,8 +256,9 @@ const Dashboard = () => {
     if (!currentInput) return;
 
     if (!user) {
-      const guestCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
-      if (guestCount >= 3) {
+      const currentGuestStatus = getGuestPromptStatus();
+      setGuestStatus(currentGuestStatus);
+      if (currentGuestStatus.isLimitReached) {
         setIsGuestModalOpen(true);
         return;
       }
@@ -285,8 +289,8 @@ const Dashboard = () => {
       });
 
       if (!user) {
-        const currentCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
-        localStorage.setItem("aether_guest_prompt_count", (currentCount + 1).toString());
+        const updatedGuestStatus = recordGuestPrompt();
+        setGuestStatus(updatedGuestStatus);
       }
 
       if (res && res.fallbackUsed) {
@@ -306,8 +310,9 @@ const Dashboard = () => {
     if (!promptText.trim()) return;
 
     if (!user) {
-      const guestCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
-      if (guestCount >= 3) {
+      const currentGuestStatus = getGuestPromptStatus();
+      setGuestStatus(currentGuestStatus);
+      if (currentGuestStatus.isLimitReached) {
         setIsGuestModalOpen(true);
         return;
       }
@@ -337,8 +342,8 @@ const Dashboard = () => {
       });
 
       if (!user) {
-        const currentCount = parseInt(localStorage.getItem("aether_guest_prompt_count") || "0", 10);
-        localStorage.setItem("aether_guest_prompt_count", (currentCount + 1).toString());
+        const updatedGuestStatus = recordGuestPrompt();
+        setGuestStatus(updatedGuestStatus);
       }
 
       if (res && res.fallbackUsed) {
@@ -498,19 +503,35 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Pro Preview Banner Pill for Free users */}
-        {user?.plan !== "pro" && (
+        {/* Pro Preview Banner Pill for Free users / Guest Limit Pill for Guests */}
+        {user ? (
+          user.plan !== "pro" && (
+            <div className="mx-3 my-2 p-3 bg-[#FFF8F5] rounded-2xl border border-orange-200 text-xs shadow-2xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-black uppercase text-[#FF6B2C] tracking-wider flex items-center gap-1">
+                  ⚡ Pro Preview
+                </span>
+                <span className="text-[10px] font-bold text-neutral-700">
+                  {proPreviewRemaining} messages left
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600 leading-tight mt-0.5">
+                Try premium models & tools for 5 total messages before upgrading.
+              </p>
+            </div>
+          )
+        ) : (
           <div className="mx-3 my-2 p-3 bg-[#FFF8F5] rounded-2xl border border-orange-200 text-xs shadow-2xs">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-black uppercase text-[#FF6B2C] tracking-wider flex items-center gap-1">
-                ⚡ Pro Preview
+                ⚡ Guest Mode
               </span>
               <span className="text-[10px] font-bold text-neutral-700">
-                {proPreviewRemaining} messages left
+                {guestStatus.remainingPrompts} / 3 left
               </span>
             </div>
             <p className="text-[11px] text-neutral-600 leading-tight mt-0.5">
-              Try premium models & tools for 5 total messages before upgrading.
+              3 free prompts refresh every 24 hours. Sign in to unlock full history.
             </p>
           </div>
         )}

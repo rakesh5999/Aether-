@@ -1,8 +1,26 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { getGuestPromptStatus, formatTimeRemaining } from '../utils/guestLimit';
 
 const GuestLimitModal = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
+  const [timeRemaining, setTimeRemaining] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updateTimer = () => {
+      const status = getGuestPromptStatus();
+      setTimeRemaining(status.timeRemainingMs);
+      if (!status.isLimitReached && status.timeRemainingMs === 0) {
+        if (onClose) onClose();
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -25,15 +43,26 @@ const GuestLimitModal = ({ isOpen, onClose }) => {
         </h3>
 
         <p className="mt-3 text-xs md:text-sm text-neutral-300 leading-relaxed">
-          You&apos;ve used your <strong className="text-blue-400">3 free guest prompts</strong>. Sign in or create an account to continue chatting with Aether AI.
+          You&apos;ve used your <strong className="text-blue-400">3 free guest prompts</strong>. Your 3 free prompts refresh automatically every <strong>24 hours</strong>.
         </p>
 
+        {/* 24-hr Countdown Box */}
+        <div className="mt-4 p-3.5 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-neutral-200 text-xs flex flex-col items-center justify-center gap-1.5 shadow-inner">
+          <span className="text-[11px] font-semibold text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            Refreshes In
+          </span>
+          <span className="font-mono text-base font-black text-white tracking-wider bg-black/40 px-3 py-1 rounded-xl border border-blue-500/20">
+            {formatTimeRemaining(timeRemaining)}
+          </span>
+        </div>
+
         {/* Gmail requirement alert */}
-        <div className="mt-4 p-3 rounded-xl bg-blue-950/30 border border-blue-500/20 text-neutral-400 text-xs text-left flex items-start gap-2">
+        <div className="mt-4 p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-neutral-400 text-xs text-left flex items-start gap-2">
           <svg className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span>Note: Manual registration requires an active <strong className="text-blue-300">@gmail.com</strong> email address.</span>
+          <span>Sign up for a free account with your <strong className="text-blue-300">@gmail.com</strong> to continue chatting without waiting!</span>
         </div>
 
         <div className="mt-6 space-y-3">
@@ -54,9 +83,9 @@ const GuestLimitModal = ({ isOpen, onClose }) => {
           {onClose && (
             <button
               onClick={onClose}
-              className="block w-full text-xs text-neutral-500 hover:text-neutral-300 transition-colors pt-1"
+              className="block w-full text-xs text-neutral-500 hover:text-neutral-300 transition-colors pt-1 cursor-pointer"
             >
-              Close
+              Close & Wait
             </button>
           )}
         </div>
@@ -66,3 +95,4 @@ const GuestLimitModal = ({ isOpen, onClose }) => {
 };
 
 export default GuestLimitModal;
+
