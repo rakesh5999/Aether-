@@ -116,12 +116,16 @@ export async function sendMessage(req, res) {
       });
       activeChatId = chat._id;
     } else {
+      const existingChat = await chatModel.findById(activeChatId);
       const messagesCount = await messageModel.countDocuments({ chat: activeChatId });
-      if (messagesCount === 0) {
+      const hasDefaultTitle = !existingChat?.title || existingChat.title === "New Chat" || existingChat.title === "New Conversation" || existingChat.title === "Guest Chat";
+
+      if (messagesCount === 0 || hasDefaultTitle) {
         title = await generateTitle(message);
         chat = await chatModel.findByIdAndUpdate(activeChatId, { title, updatedAt: new Date() }, { new: true });
       } else {
         chat = await chatModel.findByIdAndUpdate(activeChatId, { updatedAt: new Date() }, { new: true });
+        title = chat.title;
       }
     }
 

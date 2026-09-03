@@ -58,14 +58,20 @@ const Register = () => {
         email: cleanedEmail
       });
 
-      localStorage.setItem('aether_pending_email', cleanedEmail);
-      setSuccessMsg('Account created successfully! Verification email sent to your inbox.');
-
-      setTimeout(() => {
-        navigate('/check-email', { state: { email: cleanedEmail } });
-      }, 1000);
+      if (res?.requiresVerification === false) {
+        setSuccessMsg(res.message || 'Account created and verified! Redirecting to login...');
+        setTimeout(() => {
+          navigate('/login');
+        }, 1200);
+      } else {
+        localStorage.setItem('aether_pending_email', cleanedEmail);
+        setSuccessMsg('Account created successfully! Verification email sent to your inbox.');
+        setTimeout(() => {
+          navigate('/check-email', { state: { email: cleanedEmail } });
+        }, 1000);
+      }
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to create account. Please check your inputs.';
+      const message = err.response?.data?.message || err.response?.data?.errors?.[0]?.msg || err.response?.data?.err || 'Failed to create account. Please check your inputs.';
       setErrorMsg(message);
     }
   }

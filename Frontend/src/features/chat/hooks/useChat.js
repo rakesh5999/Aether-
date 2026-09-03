@@ -33,10 +33,11 @@ export const useChat = () => {
       }));
 
       // 4. Update the chat title if it was generated/updated on first message
-      if (title) {
+      const chatTitle = title || data?.chat?.title;
+      if (chatTitle && chatTitle !== "New Chat") {
         dispatch(updateChatTitle({
           chatId,
-          title
+          title: chatTitle
         }));
       }
 

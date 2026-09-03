@@ -19,21 +19,27 @@ let mistralLargeModel = null;
 let gpt4oMiniModel = null;
 let groqLlamaModel = null;
 
+let geminiLiteKey = null;
 function getGeminiLiteModel() {
-  if (!geminiLiteModel) {
+  const currentKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!geminiLiteModel || geminiLiteKey !== currentKey) {
+    geminiLiteKey = currentKey;
     geminiLiteModel = new ChatGoogleGenerativeAI({
       model: "gemini-2.0-flash-lite",
-      apiKey: process.env.GEMINI_API_KEY || "AIzaSy_dummy_key",
+      apiKey: currentKey || "AIzaSy_dummy_key",
     });
   }
   return geminiLiteModel;
 }
 
+let geminiFlashKey = null;
 function getGeminiFlashModel() {
-  if (!geminiFlashModel) {
+  const currentKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!geminiFlashModel || geminiFlashKey !== currentKey) {
+    geminiFlashKey = currentKey;
     geminiFlashModel = new ChatGoogleGenerativeAI({
       model: "gemini-2.0-flash",
-      apiKey: process.env.GEMINI_API_KEY || "AIzaSy_dummy_key",
+      apiKey: currentKey || "AIzaSy_dummy_key",
     });
   }
   return geminiFlashModel;
@@ -401,17 +407,71 @@ export async function generateResponse(messages, selectedModel = "auto", userPla
 }
 
 export async function generateTitle(message) {
+  const cleanSnippet = typeof message === "string" ? message.slice(0, 200).trim() : "";
+  if (!cleanSnippet) return "New Conversation";
+
+  const systemPrompt = "You are a concise title generator. Generate a 2 to 5 word title summarizing the user message. Return ONLY the plain title text without quotes, punctuation, or prefixes like 'Title:'.";
+  const userPrompt = `Message: "${cleanSnippet}"`;
+
+  // Helper to sanitize title
+  const sanitize = (raw) => {
+    if (!raw || typeof raw !== "string") return null;
+    let t = raw.trim()
+      .replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, "")
+      .replace(/^title:\s*/i, "")
+      .replace(/[\r\n]+/g, " ")
+      .trim();
+    if (t.length > 50) t = t.slice(0, 47) + "...";
+    return t.length > 0 ? t : null;
+  };
+
+  // 1. Try Groq Llama
   try {
     const response = await getGroqLlamaModel().invoke([
-      new SystemMessage(`
-        You are a helpful assistant that generates concise and descriptive titles for chat conversations.
-        User will provide you with the first message of a chat conversation, and you will generate a title that captures the essence of the conversation in 2-4 words.
-      `),
-      new HumanMessage(`Generate a title for a chat conversation based on: "${message}"`),
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userPrompt),
     ]);
-    return response.content;
-  } catch (err) {
-    console.error("generateTitle Error:", err);
-    return "New Conversation";
+    const clean = sanitize(response?.content);
+    if (clean) return clean;
+  } catch (err1) {
+    console.warn("generateTitle (Groq) failed, trying Gemini fallback...", err1.message);
   }
+
+  // 2. Try Gemini Lite fallback
+  try {
+    const response = await getGeminiLiteModel().invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userPrompt),
+    ]);
+    const clean = sanitize(response?.content);
+    if (clean) return clean;
+  } catch (err2) {
+    console.warn("generateTitle (Gemini) failed, trying Mistral fallback...", err2.message);
+  }
+
+  // 3. Try Mistral Small fallback
+  try {
+    const response = await getMistralSmallModel().invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(userPrompt),
+    ]);
+    const clean = sanitize(response?.content);
+    if (clean) return clean;
+  } catch (err3) {
+    console.warn("generateTitle (Mistral) failed, using local extraction fallback...", err3.message);
+  }
+
+  // 4. Deterministic fallback: extract first 4 meaningful words from the message
+  try {
+    const words = cleanSnippet
+      .replace(/[^\w\s]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length > 0);
+    if (words.length > 0) {
+      const summary = words.slice(0, 4).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      if (summary) return summary;
+    }
+  } catch (_) {}
+
+  return "New Conversation";
 }

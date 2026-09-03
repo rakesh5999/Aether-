@@ -33,8 +33,17 @@ const chatSlice=createSlice({
     },
     updateChatTitle:(state,action)=>{
       const {chatId,title}=action.payload
+      if (!title) return
       if (state.chats[chatId]) {
         state.chats[chatId].title = title
+        state.chats[chatId].lastUpdated = new Date().toISOString()
+      } else {
+        state.chats[chatId] = {
+          id: chatId,
+          title,
+          messages: [],
+          lastUpdated: new Date().toISOString()
+        }
       }
     },
     addMessages:(state,action)=>{

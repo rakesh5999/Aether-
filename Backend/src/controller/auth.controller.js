@@ -1,4 +1,4 @@
-import userModel from "../models/user.model.js";
+import userModel, { normalizeEmail } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { sendEmail } from "../services/mail.service.js";
@@ -55,13 +55,14 @@ export const register = async (req, res) => {
     });
   }
 
+  const normalizedEmail = normalizeEmail(email);
   const isUserExist = await userModel.findOne({
-    $or: [{ username }, { email }]
+    $or: [{ username }, { email }, { normalizedEmail }]
   });
 
   if (isUserExist) {
     return res.status(400).json({
-      message: "Username or email already exists",
+      message: "An account with this username or email already exists. Please log in.",
       success: false,
       err: "User already exists"
     });
@@ -130,7 +131,8 @@ export const register = async (req, res) => {
     return res.status(400).json({
       message: "Unable to send verification email to this address. Please ensure your @gmail.com address exists and is active.",
       success: false,
-      err: "Email delivery failed"
+      err: "Email delivery failed",
+      details: emailErr.message
     });
   }
 
@@ -469,6 +471,8 @@ export const testEmail = async (req, res) => {
     GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
     GOOGLE_REFRESH_TOKEN: !!process.env.GOOGLE_REFRESH_TOKEN,
+    refreshTokenLength: process.env.GOOGLE_REFRESH_TOKEN?.length,
+    refreshTokenPrefix: process.env.GOOGLE_REFRESH_TOKEN?.substring(0, 8),
   };
 
   try {

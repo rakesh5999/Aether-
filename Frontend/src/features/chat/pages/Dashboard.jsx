@@ -159,6 +159,7 @@ const Dashboard = () => {
   const currentChatId = useSelector((state) => state.chat.currentChatId);
   const isLoading = useSelector((state) => state.chat.isLoading);
   const user = useSelector((state) => state.auth.user);
+  const authLoading = useSelector((state) => state.auth.loading);
 
   const [inputValue, setInputValue] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -191,6 +192,11 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    // CRITICAL: Wait for auth check to finish before deciding guest vs logged-in mode.
+    // Without this guard, user=null briefly on reload triggers guest mode setup
+    // BEFORE handleGetMe() resolves, causing the "redirects to guest" race condition.
+    if (authLoading) return;
+
     chat.initailzeSocketConnection();
     if (user) {
       chat.handleGetChats();
@@ -202,7 +208,7 @@ const Dashboard = () => {
       setGuestStatus(getGuestPromptStatus());
     }
     fetchConfig();
-  }, [user]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (user && !isLoading && messages.length > 0) {
@@ -401,9 +407,11 @@ const Dashboard = () => {
     setIsSidebarOpen(false);
   };
 
-  const sortedChats = Object.values(chats).sort((a, b) => {
-    return new Date(b.lastUpdated) - new Date(a.lastUpdated);
-  });
+  const sortedChats = Object.values(chats)
+    .filter(c => !user || c.id !== "guest-chat")  // hide guest-chat for logged-in users
+    .sort((a, b) => {
+      return new Date(b.lastUpdated) - new Date(a.lastUpdated);
+    });
 
   const registry = modelsConfig || DEFAULT_MODELS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
   const activeModelMeta = registry[selectedModel] || DEFAULT_MODELS[0];
@@ -412,6 +420,20 @@ const Dashboard = () => {
   const autoModel = listModels.find(m => m.id === "auto") || DEFAULT_MODELS[0];
   const freeModels = listModels.filter(m => m.plan === "free" && m.id !== "auto");
   const proModels = listModels.filter(m => m.plan === "pro");
+
+  // Show a spinner while auth check is in progress (prevents guest-mode flash on reload)
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#FF6B2C] flex items-center justify-center shadow-md animate-pulse">
+            <span className="font-black text-sm text-white">AE</span>
+          </div>
+          <p className="text-xs text-neutral-400 font-semibold tracking-wide">Loading Aether AI...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen flex bg-white text-[#171717] font-sans overflow-hidden">
@@ -426,7 +448,7 @@ const Dashboard = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="text-base font-extrabold text-[#171717]">
+        <span className="text-sm font-extrabold text-[#171717] truncate max-w-[180px]">
           {currentChatId && chats[currentChatId] ? chats[currentChatId].title : "Aether AI"}
         </span>
         <button
@@ -604,92 +626,111 @@ const Dashboard = () => {
       <main className="flex-1 flex flex-col relative h-full overflow-hidden pt-14 md:pt-0 bg-white">
 
         {/* Top Model Header */}
-        <div className="px-6 py-3 border-b border-[#EAEAEA] flex items-center justify-between bg-white z-10">
-          <div className="relative inline-block text-left">
-            <button
-              type="button"
-              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-[#FAF9F6] hover:bg-[#F2F1EE] border border-[#EAEAEA] text-xs rounded-xl font-bold transition-all cursor-pointer text-[#171717] shadow-2xs"
-            >
-              <span className="w-2 h-2 rounded-full bg-[#FF6B2C] animate-pulse"></span>
-              <span>{activeModelMeta?.displayName}</span>
-              {activeModelMeta?.id === "auto" && (
-                <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1.5 py-0.5 rounded uppercase border border-orange-200">
-                  Recommended
-                </span>
-              )}
-              <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isModelDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+        <div className="px-6 py-3 border-b border-[#EAEAEA] flex items-center justify-between bg-white z-10 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative inline-block text-left flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-[#FAF9F6] hover:bg-[#F2F1EE] border border-[#EAEAEA] text-xs rounded-xl font-bold transition-all cursor-pointer text-[#171717] shadow-2xs"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#FF6B2C] animate-pulse"></span>
+                <span>{activeModelMeta?.displayName}</span>
+                {activeModelMeta?.id === "auto" && (
+                  <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1.5 py-0.5 rounded uppercase border border-orange-200">
+                    Recommended
+                  </span>
+                )}
+                <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isModelDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
-            {isModelDropdownOpen && (
-              <div className="origin-top-left absolute left-0 mt-2 w-72 rounded-2xl shadow-xl bg-white border border-[#EAEAEA] ring-1 ring-black/5 divide-y divide-[#EAEAEA] z-50 animate-fade-in overflow-hidden">
-                {/* Auto Model */}
-                <div className="p-1.5">
-                  <div
-                    onClick={() => handleModelChange(autoModel.id)}
-                    className={`flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors ${selectedModel === autoModel.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-[#171717]">{autoModel.displayName}</span>
-                        <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1 rounded uppercase">Auto</span>
+              {isModelDropdownOpen && (
+                <div className="origin-top-left absolute left-0 mt-2 w-72 rounded-2xl shadow-xl bg-white border border-[#EAEAEA] ring-1 ring-black/5 divide-y divide-[#EAEAEA] z-50 animate-fade-in overflow-hidden">
+                  {/* Auto Model */}
+                  <div className="p-1.5">
+                    <div
+                      onClick={() => handleModelChange(autoModel.id)}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors ${selectedModel === autoModel.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                    >
+                      <div className="w-2 h-2 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-[#171717]">{autoModel.displayName}</span>
+                          <span className="text-[8px] bg-orange-100 text-[#FF6B2C] font-black px-1 rounded uppercase">Auto</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-500 mt-0.5">{autoModel.desc}</p>
                       </div>
-                      <p className="text-[10px] text-neutral-500 mt-0.5">{autoModel.desc}</p>
                     </div>
                   </div>
-                </div>
 
-                {/* Free Models */}
-                <div className="p-1.5">
-                  <span className="px-2.5 py-1 block text-[9px] font-extrabold text-neutral-400 uppercase tracking-wider">Free Models</span>
-                  {freeModels.map((m) => (
-                    <div
-                      key={m.id}
-                      onClick={() => handleModelChange(m.id)}
-                      className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-neutral-300 mt-1.5 flex-shrink-0" />
-                      <div>
-                        <span className="text-xs font-semibold text-[#171717]">{m.displayName}</span>
-                        <p className="text-[10px] text-neutral-500">{m.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Pro Models */}
-                <div className="p-1.5">
-                  <span className="px-2.5 py-1 block text-[9px] font-extrabold text-[#FF6B2C] uppercase tracking-wider">Pro Models</span>
-                  {proModels.map((m) => (
-                    <div
-                      key={m.id}
-                      onClick={() => handleModelChange(m.id)}
-                      className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#171717]">{m.displayName}</span>
-                          <span className="text-[8px] bg-orange-500 text-white font-black px-1 rounded uppercase">PRO</span>
+                  {/* Free Models */}
+                  <div className="p-1.5">
+                    <span className="px-2.5 py-1 block text-[9px] font-extrabold text-neutral-400 uppercase tracking-wider">Free Models</span>
+                    {freeModels.map((m) => (
+                      <div
+                        key={m.id}
+                        onClick={() => handleModelChange(m.id)}
+                        className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full bg-neutral-300 mt-1.5 flex-shrink-0" />
+                        <div>
+                          <span className="text-xs font-semibold text-[#171717]">{m.displayName}</span>
+                          <p className="text-[10px] text-neutral-500">{m.desc}</p>
                         </div>
-                        <p className="text-[10px] text-neutral-500">{m.desc}</p>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+
+                  {/* Pro Models */}
+                  <div className="p-1.5">
+                    <span className="px-2.5 py-1 block text-[9px] font-extrabold text-[#FF6B2C] uppercase tracking-wider">Pro Models</span>
+                    {proModels.map((m) => (
+                      <div
+                        key={m.id}
+                        onClick={() => handleModelChange(m.id)}
+                        className={`flex items-start gap-2.5 p-2 rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? "bg-[#FFF4EE]" : "hover:bg-neutral-50"}`}
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C] mt-1.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-[#171717]">{m.displayName}</span>
+                            <span className="text-[8px] bg-orange-500 text-white font-black px-1 rounded uppercase">PRO</span>
+                          </div>
+                          <p className="text-[10px] text-neutral-500">{m.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* Active Chat Title in Desktop Header */}
+            {currentChatId && chats[currentChatId] && (
+              <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-[#EAEAEA] min-w-0">
+                <span className="text-xs font-bold text-[#171717] truncate max-w-[200px] md:max-w-[320px] lg:max-w-[480px]" title={chats[currentChatId].title}>
+                  {chats[currentChatId].title}
+                </span>
               </div>
             )}
           </div>
 
-          <Link to="/pricing" className="text-xs font-bold text-[#FF6B2C] hover:text-[#E55A1F] transition-colors flex items-center gap-1">
-            <span>Upgrade Plan</span>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-            </svg>
-          </Link>
+          {/* Right side: Upgrade Plan for non-pro, or PRO Badge for pro users */}
+          {user?.plan === "pro" ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-[#FFF5F0] border border-orange-200 text-[#FF6B2C] rounded-xl text-xs font-black tracking-wide shadow-2xs flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C]"></span>
+              <span>PRO</span>
+            </div>
+          ) : (
+            <Link to="/pricing" className="text-xs font-bold text-[#FF6B2C] hover:text-[#E55A1F] transition-colors flex items-center gap-1 flex-shrink-0">
+              <span>Upgrade Plan</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </Link>
+          )}
         </div>
 
         {/* Messages list container */}

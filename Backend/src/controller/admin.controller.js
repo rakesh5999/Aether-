@@ -73,3 +73,53 @@ export async function getAdminMetrics(req, res) {
     return res.status(500).json({ success: false, message: "Failed to fetch admin metrics", error: err.message });
   }
 }
+
+import { generateResponse } from "../services/ai.service.js";
+import { requestContext } from "../utils/context.js";
+
+export async function testAllModels(req, res) {
+  const modelsToTest = [
+    "llama-3.3-70b-versatile",
+    "gpt-4o-mini",
+    "mistral-small-latest",
+    "mistral-large-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "auto"
+  ];
+
+  const results = {};
+
+  for (const modelId of modelsToTest) {
+    const start = Date.now();
+    try {
+      const messages = [{ role: "user", content: "Reply with the single word: HELLO" }];
+      let response;
+      await requestContext.run({ userId: "test-admin", modelId, allowedTools: ["all"] }, async () => {
+        response = await generateResponse(messages, modelId, "pro", 5);
+      });
+      const latency = Date.now() - start;
+      results[modelId] = {
+        status: "ONLINE",
+        actualModel: response.actualModel,
+        fallbackUsed: response.fallbackUsed,
+        fallbackReason: response.fallbackReason,
+        latencyMs: latency,
+        sampleOutput: response.text?.slice(0, 100)?.trim()
+      };
+    } catch (err) {
+      const latency = Date.now() - start;
+      results[modelId] = {
+        status: "OFFLINE",
+        error: err.lastError?.message || err.message,
+        errorCode: err.code,
+        latencyMs: latency
+      };
+    }
+  }
+
+  return res.status(200).json({
+    timestamp: new Date().toISOString(),
+    results
+  });
+}
