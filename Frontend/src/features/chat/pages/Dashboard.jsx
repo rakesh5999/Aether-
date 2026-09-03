@@ -390,8 +390,14 @@ const Dashboard = () => {
     }
   };
 
-  const startNewChat = () => {
-    chat.handleCreateNewChat();
+  const startNewChat = async () => {
+    // If already on an empty chat, just clear currentChatId — no need to create a new one
+    if (currentChatId && (!chats[currentChatId] || chats[currentChatId].messages.length === 0)) {
+      dispatch(setCurrentChatId(null));
+      setIsSidebarOpen(false);
+      return;
+    }
+    await chat.handleCreateNewChat();
     setIsSidebarOpen(false);
   };
 
